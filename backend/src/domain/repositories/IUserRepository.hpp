@@ -20,5 +20,10 @@ namespace Nyx::Domain {
       ) -> Nyx::Core::Result<
         std::optional<User>
       > = 0;
+
+      virtual auto update_display_name(
+        const std::string& user_id,
+        const std::string& display_name
+      ) -> Nyx::Core::Result<void> = 0;
   };
 } // namespace Nyx::Domain

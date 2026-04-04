@@ -1,0 +1,26 @@
+info:
+  name: Create Observing Location
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/observing-locations"
+  body:
+    type: json
+    data: |-
+      {
+        // Required:
+        "name": "Backyard",
+        "latitude": -20.2,
+        "longitude": 57.5,
+        // Optional:
+        "bortle_class": 5
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

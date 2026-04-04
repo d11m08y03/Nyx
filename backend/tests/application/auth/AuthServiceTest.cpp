@@ -14,6 +14,11 @@ namespace Nyx::Application::Auth::Tests {
         (Nyx::Core::Result<std::optional<Nyx::Domain::User>>), find_by_email,
         (const std::string& email), (override)
       );
+      MOCK_METHOD(
+        Nyx::Core::Result<void>, update_display_name,
+        (const std::string& user_id, const std::string& display_name),
+        (override)
+      );
   };
 
   class MockRefreshTokenRepository : public Nyx::Domain::IRefreshTokenRepository {

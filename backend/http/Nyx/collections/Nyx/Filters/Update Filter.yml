@@ -1,0 +1,32 @@
+info:
+  name: Update Filter
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/filters/{{FILTER_ID}}"
+  body:
+    type: json
+    data: |-
+      {
+        // Required:
+        "name": "Ha 7nm",
+        "band": "H-alpha",
+        // Optional:
+        "bandwidth_nm": 8.0,
+        "brand": "Optolong",
+        "model": "L-eNhance"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: FILTER_ID
+      value: af37517e-1a00-4534-a9e7-8f76203b28bf
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,21 @@
+info:
+  name: Display Name
+  type: http
+  seq: 2
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/users/me/profile"
+  body:
+    type: json
+    data: |-
+      {
+        "display_name": "Bom"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

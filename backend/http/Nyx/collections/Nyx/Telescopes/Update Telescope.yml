@@ -1,0 +1,31 @@
+info:
+  name: Update Telescope
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/telescopes/{{TELESCOPE_ID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "ED80",
+        "aperture_mm": 80,
+        "focal_length_mm": 600,
+        "optical_design": "balls",
+        "brand": "Skywatcher",
+        "model": "ED80"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: TELESCOPE_ID
+      value: 4527a31f-44d1-46fa-8f77-fa35bd65e790
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -73,4 +73,43 @@ namespace Nyx::Core::Tests {
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().code, ErrorCode::InvalidJson);
   }
+  // UUID validation
+
+  TEST(RequestValidatorTest, ValidUuidPasses) {
+    EXPECT_TRUE(RequestValidator::is_valid_uuid(
+      "d7311a21-8a87-4aa4-af87-4757d081509a"
+    ));
+  }
+
+  TEST(RequestValidatorTest, ValidUuidUppercasePasses) {
+    EXPECT_TRUE(RequestValidator::is_valid_uuid(
+      "D7311A21-8A87-4AA4-AF87-4757D081509A"
+    ));
+  }
+
+  TEST(RequestValidatorTest, EmptyStringFailsUuid) {
+    EXPECT_FALSE(RequestValidator::is_valid_uuid(""));
+  }
+
+  TEST(RequestValidatorTest, PlainStringFailsUuid) {
+    EXPECT_FALSE(RequestValidator::is_valid_uuid("not-a-uuid"));
+  }
+
+  TEST(RequestValidatorTest, UuidWithoutHyphensFailsUuid) {
+    EXPECT_FALSE(RequestValidator::is_valid_uuid(
+      "d7311a218a874aa4af874757d081509a"
+    ));
+  }
+
+  TEST(RequestValidatorTest, UuidTooShortFailsUuid) {
+    EXPECT_FALSE(RequestValidator::is_valid_uuid(
+      "d7311a21-8a87-4aa4-af87"
+    ));
+  }
+
+  TEST(RequestValidatorTest, UuidWithExtraCharsFailsUuid) {
+    EXPECT_FALSE(RequestValidator::is_valid_uuid(
+      "d7311a21-8a87-4aa4-af87-4757d081509a-extra"
+    ));
+  }
 } // namespace Nyx::Core::Tests

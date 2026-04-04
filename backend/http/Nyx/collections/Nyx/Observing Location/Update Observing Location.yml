@@ -1,0 +1,31 @@
+info:
+  name: Update Observing Location
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/observing-locations/{{OBSERVATION_LOCATION_ID}}"
+  body:
+    type: json
+    data: |-
+      {
+        // Required:
+        "name": "Backyard",
+        "latitude": -20.2,
+        "longitude": 57.5,
+        // Optional:
+        "bortle_class": 5
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: OBSERVATION_LOCATION_ID
+      value: bb654693-2a14-4df3-a916-51e5427ac419
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

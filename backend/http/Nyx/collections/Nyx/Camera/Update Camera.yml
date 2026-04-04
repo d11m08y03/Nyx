@@ -1,0 +1,33 @@
+info:
+  name: Update Camera
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/cameras/{{CAMERA_ID}}"
+  body:
+    type: json
+    data: |-
+      {
+        // Required:
+        "name": "ASI294MC",
+        "sensor_type": "CMOS",
+        // Optional:
+        "brand": "ZWO",
+        "model": "ASI294MC Pro",
+        "pixel_size_um": 4.63,
+        "resolution": "4144x2822"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: CAMERA_ID
+      value: 6a65d7cc-4da8-4a2c-a249-a1633741dafa
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

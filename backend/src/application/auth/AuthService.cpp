@@ -36,6 +36,7 @@ namespace Nyx::Application::Auth {
       .id = this->uuid_generator->generate(),
       .email = request.email,
       .password_hash = password_hash_result.value(),
+      .display_name = std::nullopt,
     };
 
     auto create_result = this->user_repository->create(user);

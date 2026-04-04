@@ -1,0 +1,33 @@
+info:
+  name: Update Mount
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/mounts/{{MOUNT_ID}}"
+  body:
+    type: json
+    data: |-
+      {
+        // Required:
+        "name": "EQ6-R Pro",
+        "mount_type": "equatorial",
+        // Optional:
+        "is_tracked": true,
+        "has_goto": true,
+        "brand": "Skywatcher",
+        "model": "EQ6-R Pro"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: MOUNT_ID
+      value: 96c4169b-df17-4052-ad67-e06bd033d5da
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,28 @@
+info:
+  name: Create Mount
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/mounts"
+  body:
+    type: json
+    data: |-
+      {
+        // Required:
+        "name": "EQ6-R Pro",
+        "mount_type": "equatorial",
+        // Optional:
+        "is_tracked": true,
+        "has_goto": true,
+        "brand": "Skywatcher",
+        "model": "EQ6-R Pro"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

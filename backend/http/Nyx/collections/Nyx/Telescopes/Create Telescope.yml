@@ -1,0 +1,26 @@
+info:
+  name: Create Telescope
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/telescopes"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "ED80",
+        "aperture_mm": 80,
+        "focal_length_mm": 600,
+        "optical_design": "refractor",
+        "brand": "Skywatcher",
+        "model": "ED80"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

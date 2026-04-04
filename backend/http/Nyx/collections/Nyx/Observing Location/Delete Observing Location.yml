@@ -1,0 +1,20 @@
+info:
+  name: Delete Observing Location
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{SERVER_URL}}/api/v1/observing-locations/{{OBSERVATION_LOCATION_ID}}"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: OBSERVATION_LOCATION_ID
+      value: bb654693-2a14-4df3-a916-51e5427ac419
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

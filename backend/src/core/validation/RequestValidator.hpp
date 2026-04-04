@@ -52,6 +52,14 @@ namespace Nyx::Core {
 
   class RequestValidator {
     public:
+      static auto is_valid_uuid(const std::string& value) -> bool {
+        static const auto uuid_pattern = std::regex(
+          "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+          "[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        );
+        return std::regex_match(value, uuid_pattern);
+      }
+
       static auto validate(
         const nlohmann::json& body,
         const nlohmann::json& schema

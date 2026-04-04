@@ -12,30 +12,27 @@ namespace Nyx::Infrastructure::Persistence {
         drogon::app().getDbClient();
 
       auto result = database_client->execSqlSync(
-        "INSERT INTO users "
-        "(id, email, password_hash) "
+        "INSERT INTO users (id, email, password_hash) "
         "VALUES ($1, $2, $3) "
-        "RETURNING id, email, password_hash",
-        user.id,
-        user.email,
-        user.password_hash
+        "RETURNING id, email, password_hash, display_name",
+        user.id, user.email, user.password_hash
       );
 
       if (result.empty()) {
         return std::unexpected(
-          Nyx::Core::AppError::internal(
-            "Failed to create user"
-          )
+          Nyx::Core::AppError::internal("Failed to create user")
         );
       }
 
       return Nyx::Domain::User{
         .id = result[0]["id"].as<std::string>(),
-        .email =
-          result[0]["email"].as<std::string>(),
-        .password_hash =
-          result[0]["password_hash"]
-            .as<std::string>(),
+        .email = result[0]["email"].as<std::string>(),
+        .password_hash = result[0]["password_hash"].as<std::string>(),
+        .display_name = result[0]["display_name"].isNull()
+          ? std::nullopt
+          : std::optional<std::string>(
+              result[0]["display_name"].as<std::string>()
+            ),
       };
     } catch (
       const drogon::orm::DrogonDbException& exception
@@ -77,7 +74,7 @@ namespace Nyx::Infrastructure::Persistence {
         drogon::app().getDbClient();
 
       auto result = database_client->execSqlSync(
-        "SELECT id, email, password_hash "
+        "SELECT id, email, password_hash, display_name "
         "FROM users WHERE email = $1",
         email
       );
@@ -88,11 +85,13 @@ namespace Nyx::Infrastructure::Persistence {
 
       return Nyx::Domain::User{
         .id = result[0]["id"].as<std::string>(),
-        .email =
-          result[0]["email"].as<std::string>(),
-        .password_hash =
-          result[0]["password_hash"]
-            .as<std::string>(),
+        .email = result[0]["email"].as<std::string>(),
+        .password_hash = result[0]["password_hash"].as<std::string>(),
+        .display_name = result[0]["display_name"].isNull()
+          ? std::nullopt
+          : std::optional<std::string>(
+              result[0]["display_name"].as<std::string>()
+            ),
       };
     } catch (
       const drogon::orm::DrogonDbException& exception
@@ -107,6 +106,29 @@ namespace Nyx::Infrastructure::Persistence {
           "Database error"
         )
       );
+    }
+  }
+
+  auto PostgresUserRepository::update_display_name(
+    const std::string& user_id,
+    const std::string& display_name
+  ) -> Nyx::Core::Result<void> {
+    try {
+      auto database_client = drogon::app().getDbClient();
+
+      auto result = database_client->execSqlSync(
+        "UPDATE users SET display_name = $1, updated_at = NOW() WHERE id = $2",
+        display_name, user_id
+      );
+
+      if (result.affectedRows() == 0) {
+        return std::unexpected(Nyx::Core::AppError::not_found("User not found"));
+      }
+
+      return {};
+    } catch (const drogon::orm::DrogonDbException& exception) {
+      spdlog::error("Database error updating display name: {}", exception.base().what());
+      return std::unexpected(Nyx::Core::AppError::internal("Database error"));
     }
   }
 } // namespace Nyx::Infrastructure::Persistence
