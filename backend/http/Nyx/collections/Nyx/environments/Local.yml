@@ -1,0 +1,8 @@
+name: Local
+variables:
+  - name: SERVER_URL
+    value: http://localhost:8080
+  - name: USER_EMAIL
+    value: zakariyyakurmally@gmail.com
+  - name: USER_PASSWORD
+    value: "12345678"

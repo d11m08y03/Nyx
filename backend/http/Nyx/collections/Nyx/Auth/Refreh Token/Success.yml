@@ -1,0 +1,21 @@
+info:
+  name: Success
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/auth/refresh"
+  body:
+    type: json
+    data: |-
+      {
+        "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6InJlZnJlc2gifQ.eyJlbWFpbCI6Inpha2FyaXl5YWt1cm1hbGx5QGdtYWlsLmNvbSIsImV4cCI6MTc3NTkzMzYxNywiZmlkIjoiNDZhMTk1ZTYtYzAxOS00MGYyLWE5NzYtNmQ5NTM0OTAxZTkyIiwiaWF0IjoxNzc1MzI4ODE3LCJpc3MiOiJueXgiLCJqdGkiOiI0NmExOTVlNi1jMDE5LTQwZjItYTk3Ni02ZDk1MzQ5MDFlOTIiLCJzdWIiOiJkNzMxMWEyMS04YTg3LTRhYTQtYWY4Ny00NzU3ZDA4MTUwOWEifQ.nV_dphV-GN927EIP-TGrtTk5JzMso9LAF-s7Frmx8JY"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

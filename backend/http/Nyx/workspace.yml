@@ -1,0 +1,12 @@
+opencollection: 1.0.0
+info:
+  name: "Nyx"
+  type: workspace
+
+collections:
+  - name: "Nyx"
+    path: "collections/Nyx"
+
+specs:
+
+docs: ''

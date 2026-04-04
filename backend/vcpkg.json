@@ -1,0 +1,17 @@
+{
+  "name": "nyx-backend",
+  "version": "0.1.0",
+  "dependencies": [
+    {
+      "name": "drogon",
+      "features": ["postgres"]
+    },
+    "spdlog",
+    "nlohmann-json",
+    "simdjson",
+    "jwt-cpp",
+    "libsodium",
+    "json-schema-validator",
+    "gtest"
+  ]
+}
