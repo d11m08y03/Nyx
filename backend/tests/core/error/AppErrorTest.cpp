@@ -18,8 +18,7 @@ namespace Nyx::Core::Tests {
   }
 
   TEST(AppErrorTest, UnauthorizedReturnsHttp401) {
-    auto error =
-      AppError::unauthorized("Invalid credentials");
+    auto error = AppError::unauthorized("Invalid credentials");
     EXPECT_EQ(error.http_status_code(), 401);
     EXPECT_EQ(
       error.error_code_string(), "AUTHENTICATION_REQUIRED"
@@ -27,8 +26,7 @@ namespace Nyx::Core::Tests {
   }
 
   TEST(AppErrorTest, ConflictReturnsHttp409) {
-    auto error =
-      AppError::conflict("Email already exists");
+    auto error = AppError::conflict("Email already exists");
     EXPECT_EQ(error.http_status_code(), 409);
     EXPECT_EQ(error.error_code_string(), "CONFLICT");
   }
@@ -54,8 +52,7 @@ namespace Nyx::Core::Tests {
   }
 
   TEST(AppErrorTest, ResultTypeWithError) {
-    Result<int> result =
-      std::unexpected(AppError::not_found("Not found"));
+    Result<int> result = std::unexpected(AppError::not_found("Not found"));
     EXPECT_FALSE(result.has_value());
     EXPECT_EQ(result.error().http_status_code(), 404);
   }

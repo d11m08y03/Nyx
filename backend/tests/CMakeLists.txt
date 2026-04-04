@@ -4,17 +4,23 @@ include(GoogleTest)
 
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS *.cpp)
 
-add_executable(nyx-tests ${TEST_SOURCES})
+set(TESTABLE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/application/auth/AuthService.cpp
+)
+
+add_executable(nyx-tests ${TEST_SOURCES} ${TESTABLE_SOURCES})
 
 target_link_libraries(nyx-tests PRIVATE
     GTest::gtest
     GTest::gtest_main
+    GTest::gmock
     Drogon::Drogon
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     simdjson::simdjson
     jwt-cpp::jwt-cpp
     unofficial-sodium::sodium
+    nlohmann_json_schema_validator::validator
 )
 
 target_include_directories(nyx-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
