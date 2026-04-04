@@ -252,4 +252,53 @@ namespace Nyx::Presentation::Http::Auth {
 
     callback(ResponseHelper::success(response_data, correlation_id));
   }
+
+  auto AuthController::logout(
+    const drogon::HttpRequestPtr& request,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback
+  ) -> void {
+    auto correlation_id = request->getAttributes()->get<std::string>("correlation_id");
+    auto logger = request->getAttributes()->get<std::shared_ptr<spdlog::logger>>("logger");
+
+    if (!logger) {
+      logger = spdlog::default_logger();
+    }
+
+    nlohmann::json request_body;
+    try {
+      request_body = nlohmann::json::parse(request->body());
+    } catch (const nlohmann::json::parse_error& exception) {
+      logger->warn("Invalid JSON in logout request: {}", exception.what());
+
+      auto error = Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::InvalidJson,
+        "Request body must be valid JSON",
+        {}
+      };
+
+      callback(ResponseHelper::error(error, correlation_id));
+      return;
+    }
+
+    auto validated = Nyx::Core::RequestValidator::validate(
+      request_body, logout_request_schema
+    );
+
+    if (!validated.has_value()) {
+      logger->warn("Validation failed for logout request");
+      callback(ResponseHelper::error(validated.error(), correlation_id));
+      return;
+    }
+
+    auto refresh_token = request_body["refresh_token"].get<std::string>();
+
+    auto result = this->auth_service->logout(refresh_token, logger);
+
+    if (!result.has_value()) {
+      callback(ResponseHelper::error(result.error(), correlation_id));
+      return;
+    }
+
+    callback(ResponseHelper::no_content());
+  }
 } // namespace Nyx::Presentation::Http::Auth

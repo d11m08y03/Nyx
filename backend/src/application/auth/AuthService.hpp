@@ -37,6 +37,11 @@ namespace Nyx::Application::Auth {
         std::shared_ptr<spdlog::logger> logger
       ) -> Nyx::Core::Result<TokenPair>;
 
+      auto logout(
+        const std::string& refresh_token,
+        std::shared_ptr<spdlog::logger> logger
+      ) -> Nyx::Core::Result<void>;
+
     private:
       auto store_refresh_token(
         const TokenPair& token_pair,

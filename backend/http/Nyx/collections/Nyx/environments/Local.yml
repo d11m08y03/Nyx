@@ -6,3 +6,7 @@ variables:
     value: zakariyyakurmally@gmail.com
   - name: USER_PASSWORD
     value: "12345678"
+  - name: ACCESS_TOKEN
+    value: ""
+  - name: REFRESH_TOKEN
+    value: ""

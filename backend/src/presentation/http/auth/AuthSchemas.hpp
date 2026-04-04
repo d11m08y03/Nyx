@@ -46,4 +46,15 @@ namespace Nyx::Presentation::Http::Auth {
         }
       }
     })");
+  inline const auto logout_request_schema =
+    nlohmann::json::parse(R"({
+      "type": "object",
+      "required": ["refresh_token"],
+      "additionalProperties": false,
+      "properties": {
+        "refresh_token": {
+          "type": "string"
+        }
+      }
+    })");
 } // namespace Nyx::Presentation::Http::Auth

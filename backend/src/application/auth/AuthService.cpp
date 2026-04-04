@@ -218,4 +218,54 @@ namespace Nyx::Application::Auth {
 
     return {};
   }
+
+  auto AuthService::logout(
+    const std::string& refresh_token,
+    std::shared_ptr<spdlog::logger> logger
+  ) -> Nyx::Core::Result<void> {
+    logger->debug("Attempting to logout");
+
+    auto claims_result = this->token_service->verify_refresh_token(refresh_token);
+
+    if (!claims_result.has_value()) {
+      logger->warn("Logout failed: invalid refresh token");
+      return std::unexpected(claims_result.error());
+    }
+
+    auto token_hash = this->token_service->hash_token(refresh_token);
+
+    auto stored_token_result = this->refresh_token_repository->find_by_token_hash(
+      token_hash
+    );
+
+    if (!stored_token_result.has_value()) {
+      logger->error("Database error during logout");
+      return std::unexpected(stored_token_result.error());
+    }
+
+    if (!stored_token_result->has_value()) {
+      logger->warn("Logout: refresh token not found in database");
+      return std::unexpected(
+        Nyx::Core::AppError::invalid_token("Refresh token is invalid")
+      );
+    }
+
+    auto stored_token = stored_token_result->value();
+
+    auto revoke_result = this->refresh_token_repository->revoke_family(
+      stored_token.family_id
+    );
+
+    if (!revoke_result.has_value()) {
+      logger->error("Failed to revoke token family_id={}", stored_token.family_id);
+      return std::unexpected(revoke_result.error());
+    }
+
+    logger->info(
+      "Logout successful user_id={}, family_id={}",
+      stored_token.user_id, stored_token.family_id
+    );
+
+    return {};
+  }
 } // namespace Nyx::Application::Auth
