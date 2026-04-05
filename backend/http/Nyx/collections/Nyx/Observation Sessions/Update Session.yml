@@ -1,0 +1,26 @@
+info:
+  name: Update Session
+  type: http
+  seq: 4
+
+http:
+  method: PUT
+  url: "{{SERVER_URL}}/api/v1/observation-sessions/{{SESSION_ID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "notes": "Updated observation notes"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: SESSION_ID
+      value: 6faeef5e-3feb-44ff-8c3c-300f12c2c7a6
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

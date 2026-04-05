@@ -1,0 +1,20 @@
+info:
+  name: Delete Session
+  type: http
+  seq: 5
+
+http:
+  method: DELETE
+  url: "{{SERVER_URL}}/api/v1/observation-sessions/{{SESSION_ID}}"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: SESSION_ID
+      value: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

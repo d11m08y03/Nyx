@@ -1,0 +1,22 @@
+info:
+  name: Delete Image
+  type: http
+  seq: 7
+
+http:
+  method: DELETE
+  url: "{{SERVER_URL}}/api/v1/observation-sessions/{{SESSION_ID}}/images/{{IMAGE_ID}}"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: SESSION_ID
+      value: ""
+    - name: IMAGE_ID
+      value: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

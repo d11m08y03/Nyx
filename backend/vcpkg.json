@@ -13,6 +13,7 @@
     "libsodium",
     "json-schema-validator",
     "gtest",
-    "cfitsio"
+    "cfitsio",
+    "exiv2"
   ]
 }

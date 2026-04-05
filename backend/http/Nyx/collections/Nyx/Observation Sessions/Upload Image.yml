@@ -1,0 +1,26 @@
+info:
+  name: Upload Image
+  type: http
+  seq: 6
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/observation-sessions/{{SESSION_ID}}/images"
+  body:
+    type: multipartForm
+    data:
+      - name: file
+        type: file
+        value: ""
+  auth: inherit
+
+runtime:
+  variables:
+    - name: SESSION_ID
+      value: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,27 @@
+info:
+  name: Create Session
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/observation-sessions"
+  body:
+    type: json
+    data: |-
+      {
+        "target_id": "{{TARGET_ID}}",
+        "notes": "Second observation session"
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: TARGET_ID
+      value: 4c3518fd-8a80-4f08-a306-06f4f64e0f09
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

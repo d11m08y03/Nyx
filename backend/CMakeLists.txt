@@ -14,6 +14,7 @@ find_package(jwt-cpp REQUIRED)
 find_package(unofficial-sodium REQUIRED)
 find_package(nlohmann_json_schema_validator REQUIRED)
 find_package(cfitsio REQUIRED)
+find_package(exiv2 CONFIG REQUIRED)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
@@ -28,6 +29,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     unofficial-sodium::sodium
     nlohmann_json_schema_validator::validator
     CFITSIO::cfitsio
+    Exiv2::exiv2lib
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE src)
