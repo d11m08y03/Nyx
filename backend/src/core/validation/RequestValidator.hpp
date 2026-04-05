@@ -21,20 +21,24 @@ namespace Nyx::Core {
         }
 
         if (field.empty()) {
-          static const auto required_pattern = std::regex(
-            R"(required property '([^']+)')"
+          static const auto field_name_pattern = std::regex(
+            R"((?:required|additional) property '([^']+)')"
           );
           auto match = std::smatch{};
           if (std::regex_search(
-            message, match, required_pattern
+            message, match, field_name_pattern
           )) {
             field = match[1].str();
           }
         }
 
+        auto friendly_message = humanize_error(
+          field, message
+        );
+
         this->errors.push_back(FieldError{
           .field = field,
-          .message = message,
+          .message = friendly_message,
         });
       }
 
@@ -48,6 +52,49 @@ namespace Nyx::Core {
 
     private:
       std::vector<FieldError> errors;
+
+      static auto humanize_error(
+        const std::string& field,
+        const std::string& message
+      ) -> std::string {
+        static const auto patterns = std::vector<
+          std::pair<std::regex, std::string>
+        >{
+          {std::regex(R"(required property '([^']+)' not found)"),
+           "is required"},
+          {std::regex(R"(instance invalid as per false-schema)"),
+           "is not a recognized field"},
+          {std::regex(R"(expected minimum: (\d+), actual: (\d+))"),
+           "is too small"},
+          {std::regex(R"(expected maximum: (\d+), actual: (\d+))"),
+           "is too large"},
+          {std::regex(R"(expected minLength: (\d+), actual: (\d+))"),
+           "is too short"},
+          {std::regex(R"(expected maxLength: (\d+), actual: (\d+))"),
+           "is too long"},
+          {std::regex(R"(unexpected instance type)"),
+           "has an invalid type"},
+          {std::regex(R"(validation failed for additional property '([^']+)')"),
+           "is not a recognized field"},
+        };
+
+        for (const auto& [pattern, replacement] : patterns) {
+          auto match = std::smatch{};
+          if (std::regex_search(message, match, pattern)) {
+            if (match.size() > 1
+                && field.empty()
+                && replacement == "is required") {
+              return "is required";
+            }
+            if (match.size() > 1
+                && replacement == "is not a recognized field") {
+              return "is not a recognized field";
+            }
+            return replacement;
+          }
+        }
+        return message;
+      }
   };
 
   class RequestValidator {

@@ -48,6 +48,13 @@ namespace Nyx::Presentation::Http::Observation {
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
         "Nyx::Presentation::Middleware::JwtAuthFilter"
       );
+      ADD_METHOD_TO(
+        ObservationSessionController::run_photometry,
+        "/api/v1/observation-sessions/{id}/photometry",
+        drogon::Post,
+        "Nyx::Presentation::Middleware::CorrelationIdFilter",
+        "Nyx::Presentation::Middleware::JwtAuthFilter"
+      );
 
       METHOD_LIST_END
 
@@ -84,6 +91,14 @@ namespace Nyx::Presentation::Http::Observation {
       ) -> void;
 
       auto remove(
+        const drogon::HttpRequestPtr& request,
+        std::function<void(
+          const drogon::HttpResponsePtr&
+        )>&& callback,
+        const std::string& id
+      ) -> void;
+
+      auto run_photometry(
         const drogon::HttpRequestPtr& request,
         std::function<void(
           const drogon::HttpResponsePtr&

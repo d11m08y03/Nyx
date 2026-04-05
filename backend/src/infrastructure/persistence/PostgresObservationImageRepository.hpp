@@ -25,5 +25,16 @@ namespace Nyx::Infrastructure::Persistence {
 
       auto remove(const std::string& id)
         -> Nyx::Core::Result<void> override;
+
+      auto update_photometry(
+        const Nyx::Domain::ObservationImage& image
+      ) -> Nyx::Core::Result<
+        Nyx::Domain::ObservationImage
+      > override;
+
+      auto update_photometry_status_batch(
+        const std::string& session_id,
+        const std::string& status
+      ) -> Nyx::Core::Result<void> override;
   };
 } // namespace Nyx::Infrastructure::Persistence

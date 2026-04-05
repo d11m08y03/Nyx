@@ -14,6 +14,7 @@
     "json-schema-validator",
     "gtest",
     "cfitsio",
-    "exiv2"
+    "exiv2",
+    "libraw"
   ]
 }

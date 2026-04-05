@@ -1,10 +1,17 @@
 #include "presentation/http/observation/ObservationImageController.hpp"
 #include "presentation/http/ResponseHelper.hpp"
 #include "core/validation/RequestValidator.hpp"
+#include "infrastructure/imaging/AperturePhotometer.hpp"
 #include "infrastructure/imaging/Exiv2ExifParser.hpp"
+#include "infrastructure/imaging/LibrawDngDecoder.hpp"
+#include "infrastructure/persistence/PostgresCameraRepository.hpp"
+#include "infrastructure/persistence/PostgresFilterRepository.hpp"
+#include "infrastructure/persistence/PostgresMountRepository.hpp"
 #include "infrastructure/persistence/PostgresObservationImageRepository.hpp"
 #include "infrastructure/persistence/PostgresObservationSessionRepository.hpp"
+#include "infrastructure/persistence/PostgresObservingLocationRepository.hpp"
 #include "infrastructure/persistence/PostgresTargetRepository.hpp"
+#include "infrastructure/persistence/PostgresTelescopeRepository.hpp"
 #include "infrastructure/storage/LocalFileStorage.hpp"
 #include "infrastructure/util/DrogonUuidGenerator.hpp"
 
@@ -53,6 +60,41 @@ namespace Nyx::Presentation::Http::Observation {
     json["image_height"] = image.image_height.has_value()
       ? nlohmann::json(image.image_height.value())
       : nlohmann::json(nullptr);
+    json["target_x"] = image.target_x.has_value()
+      ? nlohmann::json(image.target_x.value())
+      : nlohmann::json(nullptr);
+    json["target_y"] = image.target_y.has_value()
+      ? nlohmann::json(image.target_y.value())
+      : nlohmann::json(nullptr);
+    json["raw_flux"] = image.raw_flux.has_value()
+      ? nlohmann::json(image.raw_flux.value())
+      : nlohmann::json(nullptr);
+    json["raw_flux_error"] =
+      image.raw_flux_error.has_value()
+        ? nlohmann::json(image.raw_flux_error.value())
+        : nlohmann::json(nullptr);
+    json["relative_flux"] =
+      image.relative_flux.has_value()
+        ? nlohmann::json(image.relative_flux.value())
+        : nlohmann::json(nullptr);
+    json["relative_flux_error"] =
+      image.relative_flux_error.has_value()
+        ? nlohmann::json(
+            image.relative_flux_error.value()
+          )
+        : nlohmann::json(nullptr);
+    json["photometry_status"] =
+      image.photometry_status.has_value()
+        ? nlohmann::json(
+            image.photometry_status.value()
+          )
+        : nlohmann::json(nullptr);
+    json["photometry_error_message"] =
+      image.photometry_error_message.has_value()
+        ? nlohmann::json(
+            image.photometry_error_message.value()
+          )
+        : nlohmann::json(nullptr);
     return json;
   }
 
@@ -66,24 +108,34 @@ namespace Nyx::Presentation::Http::Observation {
     this->observation_service = std::make_shared<
       Nyx::Application::Observation::ObservationService
     >(
-      std::make_shared<
-        Nyx::Infrastructure::Persistence::
-          PostgresObservationSessionRepository
-      >(),
-      std::make_shared<
-        Nyx::Infrastructure::Persistence::
-          PostgresObservationImageRepository
-      >(),
-      std::make_shared<
-        Nyx::Infrastructure::Persistence::
-          PostgresTargetRepository
-      >(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresObservationSessionRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresObservationImageRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresTargetRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresTelescopeRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresCameraRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresMountRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresObservingLocationRepository>(),
+      std::make_shared<Nyx::Infrastructure::Persistence::
+        PostgresFilterRepository>(),
       std::make_shared<
         Nyx::Infrastructure::Imaging::Exiv2ExifParser
       >(),
       std::make_shared<
         Nyx::Infrastructure::Storage::LocalFileStorage
       >(upload_base_path),
+      std::make_shared<
+        Nyx::Infrastructure::Imaging::LibrawDngDecoder
+      >(),
+      std::make_shared<
+        Nyx::Infrastructure::Imaging::AperturePhotometer
+      >(),
       std::make_shared<
         Nyx::Infrastructure::Util::DrogonUuidGenerator
       >()

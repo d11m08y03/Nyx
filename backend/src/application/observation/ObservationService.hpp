@@ -1,13 +1,20 @@
 #pragma once
 
 #include "application/observation/Dtos.hpp"
+#include "application/observation/IDngDecoder.hpp"
 #include "application/observation/IExifParser.hpp"
 #include "application/observation/IFileStorage.hpp"
+#include "application/observation/IPhotometryProcessor.hpp"
 #include "core/error/AppError.hpp"
 #include "core/util/UuidGenerator.hpp"
+#include "domain/repositories/ICameraRepository.hpp"
+#include "domain/repositories/IFilterRepository.hpp"
+#include "domain/repositories/IMountRepository.hpp"
 #include "domain/repositories/IObservationImageRepository.hpp"
 #include "domain/repositories/IObservationSessionRepository.hpp"
+#include "domain/repositories/IObservingLocationRepository.hpp"
 #include "domain/repositories/ITargetRepository.hpp"
+#include "domain/repositories/ITelescopeRepository.hpp"
 
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -23,8 +30,21 @@ namespace Nyx::Application::Observation {
           image_repository,
         std::shared_ptr<Nyx::Domain::ITargetRepository>
           target_repository,
+        std::shared_ptr<Nyx::Domain::ITelescopeRepository>
+          telescope_repository,
+        std::shared_ptr<Nyx::Domain::ICameraRepository>
+          camera_repository,
+        std::shared_ptr<Nyx::Domain::IMountRepository>
+          mount_repository,
+        std::shared_ptr<Nyx::Domain::IObservingLocationRepository>
+          location_repository,
+        std::shared_ptr<Nyx::Domain::IFilterRepository>
+          filter_repository,
         std::shared_ptr<IExifParser> exif_parser,
         std::shared_ptr<IFileStorage> file_storage,
+        std::shared_ptr<IDngDecoder> dng_decoder,
+        std::shared_ptr<IPhotometryProcessor>
+          photometry_processor,
         std::shared_ptr<Nyx::Core::IUuidGenerator>
           uuid_generator
       );
@@ -75,6 +95,15 @@ namespace Nyx::Application::Observation {
         std::shared_ptr<spdlog::logger> logger
       ) -> Nyx::Core::Result<void>;
 
+      auto run_photometry(
+        const std::string& user_id,
+        const std::string& session_id,
+        const RunPhotometryRequest& request,
+        std::shared_ptr<spdlog::logger> logger
+      ) -> Nyx::Core::Result<
+        PhotometryStatusResponse
+      >;
+
     private:
       auto verify_session_ownership(
         const std::string& session_id,
@@ -83,6 +112,12 @@ namespace Nyx::Application::Observation {
       ) -> Nyx::Core::Result<
         Nyx::Domain::ObservationSession
       >;
+
+      auto verify_equipment_ownership(
+        const std::string& user_id,
+        const CreateSessionRequest& request,
+        std::shared_ptr<spdlog::logger> logger
+      ) -> Nyx::Core::Result<void>;
 
       auto to_image_response(
         const Nyx::Domain::ObservationImage& image
@@ -104,8 +139,21 @@ namespace Nyx::Application::Observation {
         image_repository;
       std::shared_ptr<Nyx::Domain::ITargetRepository>
         target_repository;
+      std::shared_ptr<Nyx::Domain::ITelescopeRepository>
+        telescope_repository;
+      std::shared_ptr<Nyx::Domain::ICameraRepository>
+        camera_repository;
+      std::shared_ptr<Nyx::Domain::IMountRepository>
+        mount_repository;
+      std::shared_ptr<Nyx::Domain::IObservingLocationRepository>
+        location_repository;
+      std::shared_ptr<Nyx::Domain::IFilterRepository>
+        filter_repository;
       std::shared_ptr<IExifParser> exif_parser;
       std::shared_ptr<IFileStorage> file_storage;
+      std::shared_ptr<IDngDecoder> dng_decoder;
+      std::shared_ptr<IPhotometryProcessor>
+        photometry_processor;
       std::shared_ptr<Nyx::Core::IUuidGenerator>
         uuid_generator;
   };

@@ -58,6 +58,50 @@ namespace Nyx::Infrastructure::Persistence {
         : std::optional<int>(
             row["image_height"].as<int>()
           ),
+      .target_x = row["target_x"].isNull()
+        ? std::nullopt
+        : std::optional<int>(
+            row["target_x"].as<int>()
+          ),
+      .target_y = row["target_y"].isNull()
+        ? std::nullopt
+        : std::optional<int>(
+            row["target_y"].as<int>()
+          ),
+      .raw_flux = row["raw_flux"].isNull()
+        ? std::nullopt
+        : std::optional<double>(
+            row["raw_flux"].as<double>()
+          ),
+      .raw_flux_error = row["raw_flux_error"].isNull()
+        ? std::nullopt
+        : std::optional<double>(
+            row["raw_flux_error"].as<double>()
+          ),
+      .relative_flux = row["relative_flux"].isNull()
+        ? std::nullopt
+        : std::optional<double>(
+            row["relative_flux"].as<double>()
+          ),
+      .relative_flux_error =
+        row["relative_flux_error"].isNull()
+          ? std::nullopt
+          : std::optional<double>(
+              row["relative_flux_error"].as<double>()
+            ),
+      .photometry_status =
+        row["photometry_status"].isNull()
+          ? std::nullopt
+          : std::optional<std::string>(
+              row["photometry_status"].as<std::string>()
+            ),
+      .photometry_error_message =
+        row["photometry_error_message"].isNull()
+          ? std::nullopt
+          : std::optional<std::string>(
+              row["photometry_error_message"]
+                .as<std::string>()
+            ),
       .created_at = row["created_at"].as<std::string>(),
     };
   }
@@ -217,6 +261,105 @@ namespace Nyx::Infrastructure::Persistence {
       return std::unexpected(
         Nyx::Core::AppError::internal(
           "Failed to delete observation image"
+        )
+      );
+    }
+  }
+  auto PostgresObservationImageRepository::
+    update_photometry(
+      const Nyx::Domain::ObservationImage& image
+    ) -> Nyx::Core::Result<
+      Nyx::Domain::ObservationImage
+    > {
+    try {
+      auto db = drogon::app().getDbClient();
+      auto result = db->execSqlSync(
+        "UPDATE observation_images SET "
+        "target_x = NULLIF($1, '')::integer, "
+        "target_y = NULLIF($2, '')::integer, "
+        "raw_flux = NULLIF($3, '')::double precision, "
+        "raw_flux_error = "
+        "NULLIF($4, '')::double precision, "
+        "relative_flux = "
+        "NULLIF($5, '')::double precision, "
+        "relative_flux_error = "
+        "NULLIF($6, '')::double precision, "
+        "photometry_status = NULLIF($7, ''), "
+        "photometry_error_message = NULLIF($8, '') "
+        "WHERE id = $9 RETURNING *",
+        image.target_x.has_value()
+          ? std::to_string(image.target_x.value())
+          : "",
+        image.target_y.has_value()
+          ? std::to_string(image.target_y.value())
+          : "",
+        image.raw_flux.has_value()
+          ? std::to_string(image.raw_flux.value())
+          : "",
+        image.raw_flux_error.has_value()
+          ? std::to_string(
+              image.raw_flux_error.value()
+            )
+          : "",
+        image.relative_flux.has_value()
+          ? std::to_string(
+              image.relative_flux.value()
+            )
+          : "",
+        image.relative_flux_error.has_value()
+          ? std::to_string(
+              image.relative_flux_error.value()
+            )
+          : "",
+        image.photometry_status.value_or(""),
+        image.photometry_error_message.value_or("")
+      );
+
+      if (result.empty()) {
+        return std::unexpected(
+          Nyx::Core::AppError::not_found(
+            "Observation image not found"
+          )
+        );
+      }
+
+      return row_to_image(result[0]);
+    } catch (const drogon::orm::DrogonDbException& e) {
+      spdlog::error(
+        "Database error updating photometry: {}",
+        e.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal(
+          "Failed to update photometry"
+        )
+      );
+    }
+  }
+
+  auto PostgresObservationImageRepository::
+    update_photometry_status_batch(
+    const std::string& session_id,
+    const std::string& status
+  ) -> Nyx::Core::Result<void> {
+    try {
+      auto db = drogon::app().getDbClient();
+      db->execSqlSync(
+        "UPDATE observation_images "
+        "SET photometry_status = $1 "
+        "WHERE session_id = $2",
+        status, session_id
+      );
+      return {};
+    } catch (const drogon::orm::DrogonDbException& e) {
+      spdlog::error(
+        "Database error batch updating photometry "
+        "status: {}",
+        e.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal(
+          "Failed to update photometry status"
         )
       );
     }

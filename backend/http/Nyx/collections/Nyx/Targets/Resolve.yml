@@ -10,7 +10,7 @@ http:
     type: json
     data: |-
       {
-        "target_name": "Pi Mensae"
+        "target_name": "Alpha Centauri"
       }
   auth: inherit
 

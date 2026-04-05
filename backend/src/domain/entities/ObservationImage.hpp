@@ -21,6 +21,14 @@ namespace Nyx::Domain {
     std::optional<double> gps_longitude;
     std::optional<int> image_width;
     std::optional<int> image_height;
+    std::optional<int> target_x;
+    std::optional<int> target_y;
+    std::optional<double> raw_flux;
+    std::optional<double> raw_flux_error;
+    std::optional<double> relative_flux;
+    std::optional<double> relative_flux_error;
+    std::optional<std::string> photometry_status;
+    std::optional<std::string> photometry_error_message;
     std::string created_at;
   };
 } // namespace Nyx::Domain

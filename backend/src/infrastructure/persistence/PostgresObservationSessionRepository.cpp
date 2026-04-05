@@ -11,6 +11,17 @@ namespace Nyx::Infrastructure::Persistence {
       .id = row["id"].as<std::string>(),
       .user_id = row["user_id"].as<std::string>(),
       .target_id = row["target_id"].as<std::string>(),
+      .telescope_id =
+        row["telescope_id"].as<std::string>(),
+      .camera_id = row["camera_id"].as<std::string>(),
+      .mount_id = row["mount_id"].as<std::string>(),
+      .location_id =
+        row["location_id"].as<std::string>(),
+      .filter_id = row["filter_id"].isNull()
+        ? std::nullopt
+        : std::optional<std::string>(
+            row["filter_id"].as<std::string>()
+          ),
       .notes = row["notes"].isNull()
         ? std::nullopt
         : std::optional<std::string>(
@@ -28,12 +39,17 @@ namespace Nyx::Infrastructure::Persistence {
       auto db = drogon::app().getDbClient();
       auto result = db->execSqlSync(
         "INSERT INTO observation_sessions "
-        "(id, user_id, target_id, notes) "
-        "VALUES ($1, $2, $3, NULLIF($4, '')) "
-        "RETURNING id, user_id, target_id, notes, "
-        "created_at, updated_at",
+        "(id, user_id, target_id, telescope_id, "
+        "camera_id, mount_id, location_id, "
+        "filter_id, notes) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, "
+        "NULLIF($8, '')::uuid, NULLIF($9, '')) "
+        "RETURNING *",
         session.id, session.user_id,
-        session.target_id,
+        session.target_id, session.telescope_id,
+        session.camera_id, session.mount_id,
+        session.location_id,
+        session.filter_id.value_or(""),
         session.notes.value_or("")
       );
 
@@ -67,9 +83,7 @@ namespace Nyx::Infrastructure::Persistence {
     try {
       auto db = drogon::app().getDbClient();
       auto result = db->execSqlSync(
-        "SELECT id, user_id, target_id, notes, "
-        "created_at, updated_at "
-        "FROM observation_sessions "
+        "SELECT * FROM observation_sessions "
         "WHERE user_id = $1 ORDER BY created_at DESC",
         user_id
       );
@@ -99,9 +113,8 @@ namespace Nyx::Infrastructure::Persistence {
     try {
       auto db = drogon::app().getDbClient();
       auto result = db->execSqlSync(
-        "SELECT id, user_id, target_id, notes, "
-        "created_at, updated_at "
-        "FROM observation_sessions WHERE id = $1",
+        "SELECT * FROM observation_sessions "
+        "WHERE id = $1",
         id
       );
 
@@ -126,11 +139,14 @@ namespace Nyx::Infrastructure::Persistence {
       auto db = drogon::app().getDbClient();
       auto result = db->execSqlSync(
         "UPDATE observation_sessions "
-        "SET notes = NULLIF($1, ''), updated_at = NOW() "
-        "WHERE id = $2 "
-        "RETURNING id, user_id, target_id, notes, "
-        "created_at, updated_at",
-        session.notes.value_or(""), session.id
+        "SET notes = NULLIF($1, ''), "
+        "filter_id = NULLIF($2, '')::uuid, "
+        "updated_at = NOW() "
+        "WHERE id = $3 "
+        "RETURNING *",
+        session.notes.value_or(""),
+        session.filter_id.value_or(""),
+        session.id
       );
 
       if (result.empty()) {

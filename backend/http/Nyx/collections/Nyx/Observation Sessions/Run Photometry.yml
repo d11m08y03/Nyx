@@ -1,0 +1,27 @@
+info:
+  name: Run Photometry
+  type: http
+  seq: 8
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/observation-sessions/{{SESSION_ID}}/photometry"
+  body:
+    type: json
+    data: |-
+      {
+        "target_x": 150,
+        "target_y": 200
+      }
+  auth: inherit
+
+runtime:
+  variables:
+    - name: SESSION_ID
+      value: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

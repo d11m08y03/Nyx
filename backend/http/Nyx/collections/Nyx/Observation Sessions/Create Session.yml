@@ -11,7 +11,11 @@ http:
     data: |-
       {
         "target_id": "{{TARGET_ID}}",
-        "notes": "Second observation session"
+        "telescope_id": "{{TELESCOPE_ID}}",
+        "camera_id": "{{CAMERA_ID}}",
+        "mount_id": "{{MOUNT_ID}}",
+        "location_id": "{{LOCATION_ID}}",
+        "notes": "Observation session with equipment"
       }
   auth: inherit
 
@@ -19,6 +23,14 @@ runtime:
   variables:
     - name: TARGET_ID
       value: 4c3518fd-8a80-4f08-a306-06f4f64e0f09
+    - name: TELESCOPE_ID
+      value: e71ddf98-9bb7-4177-9d32-6056af687884
+    - name: CAMERA_ID
+      value: d59ab736-92d8-485d-a29d-f8603e625717
+    - name: MOUNT_ID
+      value: 2e00eb8d-748f-47b8-9140-cd29a41b9cf1
+    - name: LOCATION_ID
+      value: 168edacb-54a6-486f-aa30-e85c0602fdfe
 
 settings:
   encodeUrl: true

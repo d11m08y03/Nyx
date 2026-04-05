@@ -31,5 +31,14 @@ namespace Nyx::Domain {
       virtual auto remove(
         const std::string& id
       ) -> Nyx::Core::Result<void> = 0;
+
+      virtual auto update_photometry(
+        const ObservationImage& image
+      ) -> Nyx::Core::Result<ObservationImage> = 0;
+
+      virtual auto update_photometry_status_batch(
+        const std::string& session_id,
+        const std::string& status
+      ) -> Nyx::Core::Result<void> = 0;
   };
 } // namespace Nyx::Domain

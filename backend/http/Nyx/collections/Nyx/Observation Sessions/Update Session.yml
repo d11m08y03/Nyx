@@ -10,6 +10,7 @@ http:
     type: json
     data: |-
       {
+        "filter_id": "43ca8b6a-e24d-410a-a075-8df4e576e158",
         "notes": "Updated observation notes"
       }
   auth: inherit
@@ -17,7 +18,7 @@ http:
 runtime:
   variables:
     - name: SESSION_ID
-      value: 6faeef5e-3feb-44ff-8c3c-300f12c2c7a6
+      value: 04f7572a-16be-4b4c-8e76-3c522605078e
 
 settings:
   encodeUrl: true
