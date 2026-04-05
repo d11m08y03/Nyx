@@ -26,6 +26,13 @@ namespace Nyx::Application::Observation::Tests {
         (override)
       );
       MOCK_METHOD(
+        (Nyx::Core::Result<std::vector<Nyx::Domain::ObservationSession>>),
+        find_by_user_id_and_target_id,
+        (const std::string& user_id,
+         const std::string& target_id),
+        (override)
+      );
+      MOCK_METHOD(
         Nyx::Core::Result<Nyx::Domain::ObservationSession>,
         update,
         (const Nyx::Domain::ObservationSession& session),

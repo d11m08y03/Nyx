@@ -11,6 +11,7 @@ set(TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/application/location/LocationService.cpp
     ${CMAKE_SOURCE_DIR}/src/application/target/TargetService.cpp
     ${CMAKE_SOURCE_DIR}/src/application/observation/ObservationService.cpp
+    ${CMAKE_SOURCE_DIR}/src/application/target/LightCurveComparisonService.cpp
     ${CMAKE_SOURCE_DIR}/src/infrastructure/nasa/FitsParser.cpp
 )
 
