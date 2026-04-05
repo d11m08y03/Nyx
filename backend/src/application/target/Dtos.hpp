@@ -50,4 +50,33 @@ namespace Nyx::Application::Target {
     int point_count;
     std::string points_json;
   };
+  struct UserObservationPoint {
+    double time;
+    double relative_flux;
+    double relative_flux_error;
+    std::string session_id;
+    std::string captured_at;
+  };
+
+  struct TessComparisonData {
+    std::string tess_observation_id;
+    std::string obsid;
+    int cadence_seconds;
+    int point_count;
+    std::vector<Nyx::Domain::LightCurvePoint> points;
+  };
+
+  struct UserObservationData {
+    int session_count;
+    int point_count;
+    std::vector<UserObservationPoint> points;
+  };
+
+  struct LightCurveComparisonResponse {
+    TargetResponse target;
+    std::string time_system;
+    std::string time_system_note;
+    TessComparisonData tess;
+    UserObservationData user_observations;
+  };
 } // namespace Nyx::Application::Target

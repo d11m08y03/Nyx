@@ -28,6 +28,13 @@ namespace Nyx::Infrastructure::Persistence {
         Nyx::Domain::ObservationSession
       > override;
 
+      auto find_by_user_id_and_target_id(
+        const std::string& user_id,
+        const std::string& target_id
+      ) -> Nyx::Core::Result<
+        std::vector<Nyx::Domain::ObservationSession>
+      > override;
+
       auto remove(const std::string& id)
         -> Nyx::Core::Result<void> override;
   };

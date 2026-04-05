@@ -32,6 +32,13 @@ namespace Nyx::Domain {
         const ObservationSession& session
       ) -> Nyx::Core::Result<ObservationSession> = 0;
 
+      virtual auto find_by_user_id_and_target_id(
+        const std::string& user_id,
+        const std::string& target_id
+      ) -> Nyx::Core::Result<
+        std::vector<ObservationSession>
+      > = 0;
+
       virtual auto remove(
         const std::string& id
       ) -> Nyx::Core::Result<void> = 0;

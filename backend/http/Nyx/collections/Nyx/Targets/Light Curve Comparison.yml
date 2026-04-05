@@ -1,0 +1,24 @@
+info:
+  name: Light Curve Comparison
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: "{{SERVER_URL}}/api/v1/targets/{{TARGET_ID}}/light-curve-comparison?tess_observation_id={{TESS_OBSERVATION_ID}}&quality_filter=true"
+  body:
+    type: none
+  auth: inherit
+
+runtime:
+  variables:
+    - name: TARGET_ID
+      value: ""
+    - name: TESS_OBSERVATION_ID
+      value: ""
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

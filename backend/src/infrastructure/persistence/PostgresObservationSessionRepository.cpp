@@ -105,6 +105,40 @@ namespace Nyx::Infrastructure::Persistence {
     }
   }
 
+  auto PostgresObservationSessionRepository::
+    find_by_user_id_and_target_id(
+      const std::string& user_id,
+      const std::string& target_id
+    ) -> Nyx::Core::Result<
+      std::vector<Nyx::Domain::ObservationSession>
+    > {
+    try {
+      auto db = drogon::app().getDbClient();
+      auto result = db->execSqlSync(
+        "SELECT * FROM observation_sessions "
+        "WHERE user_id = $1 AND target_id = $2 "
+        "ORDER BY created_at DESC",
+        user_id, target_id
+      );
+
+      auto sessions =
+        std::vector<Nyx::Domain::ObservationSession>{};
+      for (const auto& row : result) {
+        sessions.push_back(row_to_session(row));
+      }
+      return sessions;
+    } catch (const drogon::orm::DrogonDbException& e) {
+      spdlog::error(
+        "Database error finding sessions by user "
+        "and target: {}",
+        e.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal("Database error")
+      );
+    }
+  }
+
   auto PostgresObservationSessionRepository::find_by_id(
     const std::string& id
   ) -> Nyx::Core::Result<
