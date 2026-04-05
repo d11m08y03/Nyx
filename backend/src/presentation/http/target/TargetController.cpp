@@ -4,7 +4,9 @@
 #include "core/validation/RequestValidator.hpp"
 #include "infrastructure/persistence/PostgresTargetRepository.hpp"
 #include "infrastructure/persistence/PostgresTessObservationRepository.hpp"
+#include "infrastructure/persistence/PostgresLightCurvePointRepository.hpp"
 #include "infrastructure/nasa/MastClient.hpp"
+#include "infrastructure/nasa/FitsParser.hpp"
 #include "infrastructure/config/EnvironmentConfig.hpp"
 #include "infrastructure/util/DrogonUuidGenerator.hpp"
 
@@ -13,7 +15,8 @@
 
 namespace Nyx::Presentation::Http::Target {
   TargetController::TargetController() {
-    auto config = Nyx::Infrastructure::Config::EnvironmentConfig{};
+    auto config =
+      Nyx::Infrastructure::Config::EnvironmentConfig{};
 
     auto mast_client = std::make_shared<
       Nyx::Infrastructure::Nasa::MastClient
@@ -31,11 +34,20 @@ namespace Nyx::Presentation::Http::Target {
       Nyx::Infrastructure::Util::DrogonUuidGenerator
     >();
 
+    auto light_curve_point_repository = std::make_shared<
+      Nyx::Infrastructure::Persistence::PostgresLightCurvePointRepository
+    >();
+
+    auto fits_parser = std::make_shared<
+      Nyx::Infrastructure::Nasa::FitsParser
+    >();
+
     this->target_service = std::make_shared<
       Nyx::Application::Target::TargetService
     >(
       mast_client, target_repository,
-      tess_observation_repository, uuid_generator
+      tess_observation_repository, uuid_generator,
+      light_curve_point_repository, fits_parser
     );
 
     spdlog::debug("TargetController initialized");

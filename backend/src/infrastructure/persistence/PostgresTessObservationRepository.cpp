@@ -121,4 +121,64 @@ namespace Nyx::Infrastructure::Persistence {
       );
     }
   }
+  auto PostgresTessObservationRepository::find_by_id(
+    const std::string& id
+  ) -> Nyx::Core::Result<
+    std::optional<Nyx::Domain::TessObservation>
+  > {
+    try {
+      auto db = drogon::app().getDbClient();
+      auto result = db->execSqlSync(
+        "SELECT id, target_id, obsid, cadence_seconds, "
+        "start_time, end_time, data_uri "
+        "FROM tess_observations WHERE id = $1",
+        id
+      );
+
+      if (result.empty()) return std::nullopt;
+
+      return row_to_tess_observation(result[0]);
+    } catch (const drogon::orm::DrogonDbException& exception) {
+      spdlog::error(
+        "Database error finding TESS observation by id: {}",
+        exception.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal("Database error")
+      );
+    }
+  }
+
+  auto PostgresTessObservationRepository::update_data_uri(
+    const std::string& id, const std::string& data_uri
+  ) -> Nyx::Core::Result<Nyx::Domain::TessObservation> {
+    try {
+      auto db = drogon::app().getDbClient();
+      auto result = db->execSqlSync(
+        "UPDATE tess_observations SET data_uri = $1, "
+        "updated_at = NOW() WHERE id = $2 "
+        "RETURNING id, target_id, obsid, cadence_seconds, "
+        "start_time, end_time, data_uri",
+        data_uri, id
+      );
+
+      if (result.empty()) {
+        return std::unexpected(
+          Nyx::Core::AppError::not_found(
+            "TESS observation not found"
+          )
+        );
+      }
+
+      return row_to_tess_observation(result[0]);
+    } catch (const drogon::orm::DrogonDbException& exception) {
+      spdlog::error(
+        "Database error updating TESS observation data_uri: {}",
+        exception.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal("Database error")
+      );
+    }
+  }
 } // namespace Nyx::Infrastructure::Persistence

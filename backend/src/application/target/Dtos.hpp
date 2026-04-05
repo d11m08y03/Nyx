@@ -26,4 +26,27 @@ namespace Nyx::Application::Target {
     std::optional<double> declination;
     std::vector<TessObservationResponse> tess_observations;
   };
+
+  struct LightCurvePointResponse {
+    double time;
+    std::optional<float> pdcsap_flux;
+    std::optional<float> pdcsap_flux_err;
+    std::optional<float> sap_flux;
+    int quality;
+  };
+
+  struct LightCurveMetadataResponse {
+    std::string tess_observation_id;
+    std::string obsid;
+    int point_count;
+    double time_min;
+    double time_max;
+  };
+
+  struct LightCurveResponse {
+    std::string tess_observation_id;
+    std::string obsid;
+    int point_count;
+    std::vector<LightCurvePointResponse> points;
+  };
 } // namespace Nyx::Application::Target

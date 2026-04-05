@@ -15,6 +15,15 @@ namespace Nyx::Application::Target::Tests {
         search_tess_timeseries,
         (double ra, double dec, double radius), (override)
       );
+      MOCK_METHOD(
+        (Nyx::Core::Result<std::vector<DataProduct>>),
+        get_data_products,
+        (const std::string& obsid), (override)
+      );
+      MOCK_METHOD(
+        Nyx::Core::Result<std::string>, download_fits,
+        (const std::string& data_uri), (override)
+      );
   };
 
   class MockTargetRepository
@@ -52,11 +61,56 @@ namespace Nyx::Application::Target::Tests {
         find_by_obsid,
         (const std::string& obsid), (override)
       );
+      MOCK_METHOD(
+        (Nyx::Core::Result<std::optional<Nyx::Domain::TessObservation>>),
+        find_by_id,
+        (const std::string& id), (override)
+      );
+      MOCK_METHOD(
+        Nyx::Core::Result<Nyx::Domain::TessObservation>,
+        update_data_uri,
+        (const std::string& id, const std::string& data_uri),
+        (override)
+      );
   };
 
   class MockUuidGenerator : public Nyx::Core::IUuidGenerator {
     public:
       MOCK_METHOD(std::string, generate, (), (override));
+  };
+
+  class MockLightCurvePointRepository
+    : public Nyx::Domain::ILightCurvePointRepository {
+    public:
+      MOCK_METHOD(
+        Nyx::Core::Result<int>, bulk_create,
+        (const std::string& observation_id,
+         const std::vector<Nyx::Domain::LightCurvePoint>& points),
+        (override)
+      );
+      MOCK_METHOD(
+        (Nyx::Core::Result<std::vector<Nyx::Domain::LightCurvePoint>>),
+        find_by_observation_id,
+        (const std::string& observation_id, bool quality_filter),
+        (override)
+      );
+      MOCK_METHOD(
+        Nyx::Core::Result<int>, count_by_observation_id,
+        (const std::string& observation_id), (override)
+      );
+      MOCK_METHOD(
+        Nyx::Core::Result<void>, delete_by_observation_id,
+        (const std::string& observation_id), (override)
+      );
+  };
+
+  class MockFitsParser : public IFitsParser {
+    public:
+      MOCK_METHOD(
+        (Nyx::Core::Result<std::vector<Nyx::Domain::LightCurvePoint>>),
+        parse_light_curve,
+        (const std::string& fits_data), (override)
+      );
   };
 
   class TargetServiceTest : public ::testing::Test {
@@ -67,11 +121,15 @@ namespace Nyx::Application::Target::Tests {
         this->tess_obs_repo =
           std::make_shared<MockTessObservationRepository>();
         this->uuid_gen = std::make_shared<MockUuidGenerator>();
+        this->lcp_repo =
+          std::make_shared<MockLightCurvePointRepository>();
+        this->fits_parser = std::make_shared<MockFitsParser>();
         this->logger = spdlog::default_logger();
 
         this->service = std::make_unique<TargetService>(
           this->mast_client, this->target_repo,
-          this->tess_obs_repo, this->uuid_gen
+          this->tess_obs_repo, this->uuid_gen,
+          this->lcp_repo, this->fits_parser
         );
       }
 
@@ -79,9 +137,13 @@ namespace Nyx::Application::Target::Tests {
       std::shared_ptr<MockTargetRepository> target_repo;
       std::shared_ptr<MockTessObservationRepository> tess_obs_repo;
       std::shared_ptr<MockUuidGenerator> uuid_gen;
+      std::shared_ptr<MockLightCurvePointRepository> lcp_repo;
+      std::shared_ptr<MockFitsParser> fits_parser;
       std::shared_ptr<spdlog::logger> logger;
       std::unique_ptr<TargetService> service;
   };
+
+  // ===== Existing resolve_target tests =====
 
   TEST_F(TargetServiceTest, ResolveNewTargetWithTessData) {
     auto request = ResolveTargetRequest{.target_name = "Pi Mensae"};
@@ -587,5 +649,399 @@ namespace Nyx::Application::Target::Tests {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->id, "t-2");
     EXPECT_EQ(result->canonical_name, "M  31");
+  }
+
+  // ===== discover_products tests =====
+
+  TEST_F(TargetServiceTest, DiscoverProductsSuccess) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = std::nullopt,
+    };
+
+    auto products = std::vector<DataProduct>{
+      {.data_uri = "mast:TESS/product/other.fits",
+       .description = "Target pixel files",
+       .product_type = "SCIENCE",
+       .filename = "tess-s0001-obs-1-tp.fits"},
+      {.data_uri = "mast:TESS/product/lc.fits",
+       .description = "Light curves",
+       .product_type = "SCIENCE",
+       .filename = "tess-s0001-obs-1-lc.fits"},
+    };
+
+    auto updated_observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(*this->mast_client, get_data_products("obs-1"))
+      .WillOnce(::testing::Return(products));
+    EXPECT_CALL(
+      *this->tess_obs_repo,
+      update_data_uri("to-1", "mast:TESS/product/lc.fits")
+    ).WillOnce(::testing::Return(updated_observation));
+
+    auto result = this->service->discover_products(
+      "to-1", this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->id, "to-1");
+    EXPECT_EQ(result->data_uri.value(), "mast:TESS/product/lc.fits");
+  }
+
+  TEST_F(TargetServiceTest, DiscoverProductsAlreadyHasUri) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+
+    auto result = this->service->discover_products(
+      "to-1", this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->data_uri.value(), "mast:TESS/product/lc.fits");
+  }
+
+  TEST_F(TargetServiceTest, DiscoverProductsNotFound) {
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("bad"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(std::nullopt)
+      ));
+
+    auto result = this->service->discover_products(
+      "bad", this->logger
+    );
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(
+      result.error().code, Nyx::Core::ErrorCode::ResourceNotFound
+    );
+  }
+
+  TEST_F(TargetServiceTest, DiscoverProductsNoLcFile) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = std::nullopt,
+    };
+
+    auto products = std::vector<DataProduct>{
+      {.data_uri = "mast:TESS/product/tp.fits",
+       .description = "Target pixel files",
+       .product_type = "SCIENCE",
+       .filename = "tess-s0001-obs-1-tp.fits"},
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(*this->mast_client, get_data_products("obs-1"))
+      .WillOnce(::testing::Return(products));
+
+    auto result = this->service->discover_products(
+      "to-1", this->logger
+    );
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(
+      result.error().code, Nyx::Core::ErrorCode::ResourceNotFound
+    );
+  }
+
+  TEST_F(TargetServiceTest, DiscoverProductsMastFailure) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = std::nullopt,
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(*this->mast_client, get_data_products("obs-1"))
+      .WillOnce(::testing::Return(std::unexpected(
+        Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST API request failed", {}
+        }
+      )));
+
+    auto result = this->service->discover_products(
+      "to-1", this->logger
+    );
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(
+      result.error().code,
+      Nyx::Core::ErrorCode::ExternalServiceError
+    );
+  }
+
+  // ===== fetch_light_curve tests =====
+
+  TEST_F(TargetServiceTest, FetchLightCurveSuccess) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    auto parsed_points = std::vector<Nyx::Domain::LightCurvePoint>{
+      {.id = 0, .tess_observation_id = "",
+       .time = 1325.5, .pdcsap_flux = 100.0f,
+       .pdcsap_flux_err = 0.5f, .sap_flux = 101.0f,
+       .quality = 0},
+      {.id = 0, .tess_observation_id = "",
+       .time = 1325.6, .pdcsap_flux = 99.5f,
+       .pdcsap_flux_err = 0.5f, .sap_flux = 100.5f,
+       .quality = 0},
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(*this->lcp_repo, count_by_observation_id("to-1"))
+      .WillOnce(::testing::Return(0));
+    EXPECT_CALL(
+      *this->mast_client,
+      download_fits("mast:TESS/product/lc.fits")
+    ).WillOnce(::testing::Return(std::string("fake-fits-data")));
+    EXPECT_CALL(
+      *this->fits_parser, parse_light_curve("fake-fits-data")
+    ).WillOnce(::testing::Return(parsed_points));
+    EXPECT_CALL(*this->lcp_repo, bulk_create("to-1", ::testing::_))
+      .WillOnce(::testing::Return(2));
+
+    auto result = this->service->fetch_light_curve(
+      "to-1", this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->tess_observation_id, "to-1");
+    EXPECT_EQ(result->obsid, "obs-1");
+    EXPECT_EQ(result->point_count, 2);
+    EXPECT_DOUBLE_EQ(result->time_min, 1325.5);
+    EXPECT_DOUBLE_EQ(result->time_max, 1325.6);
+  }
+
+  TEST_F(TargetServiceTest, FetchLightCurveNoDataUri) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = std::nullopt,
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+
+    auto result = this->service->fetch_light_curve(
+      "to-1", this->logger
+    );
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(
+      result.error().code, Nyx::Core::ErrorCode::ValidationError
+    );
+  }
+
+  TEST_F(TargetServiceTest, FetchLightCurveAlreadyFetched) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    auto stored_points = std::vector<Nyx::Domain::LightCurvePoint>{
+      {.id = 1, .tess_observation_id = "to-1",
+       .time = 1325.5, .pdcsap_flux = 100.0f,
+       .pdcsap_flux_err = 0.5f, .sap_flux = 101.0f,
+       .quality = 0},
+      {.id = 2, .tess_observation_id = "to-1",
+       .time = 1325.6, .pdcsap_flux = 99.5f,
+       .pdcsap_flux_err = 0.5f, .sap_flux = 100.5f,
+       .quality = 0},
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(*this->lcp_repo, count_by_observation_id("to-1"))
+      .WillOnce(::testing::Return(2));
+    EXPECT_CALL(
+      *this->lcp_repo, find_by_observation_id("to-1", false)
+    ).WillOnce(::testing::Return(stored_points));
+
+    auto result = this->service->fetch_light_curve(
+      "to-1", this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->point_count, 2);
+    EXPECT_DOUBLE_EQ(result->time_min, 1325.5);
+    EXPECT_DOUBLE_EQ(result->time_max, 1325.6);
+  }
+
+  TEST_F(TargetServiceTest, FetchLightCurveDownloadFailure) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(*this->lcp_repo, count_by_observation_id("to-1"))
+      .WillOnce(::testing::Return(0));
+    EXPECT_CALL(
+      *this->mast_client,
+      download_fits("mast:TESS/product/lc.fits")
+    ).WillOnce(::testing::Return(std::unexpected(
+      Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::ExternalServiceError,
+        "MAST download failed", {}
+      }
+    )));
+
+    auto result = this->service->fetch_light_curve(
+      "to-1", this->logger
+    );
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(
+      result.error().code,
+      Nyx::Core::ErrorCode::ExternalServiceError
+    );
+  }
+
+  // ===== get_light_curve tests =====
+
+  TEST_F(TargetServiceTest, GetLightCurveSuccess) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    auto points = std::vector<Nyx::Domain::LightCurvePoint>{
+      {.id = 1, .tess_observation_id = "to-1",
+       .time = 1325.5, .pdcsap_flux = 100.0f,
+       .pdcsap_flux_err = 0.5f, .sap_flux = 101.0f,
+       .quality = 0},
+      {.id = 2, .tess_observation_id = "to-1",
+       .time = 1325.6, .pdcsap_flux = 99.5f,
+       .pdcsap_flux_err = 0.5f, .sap_flux = 100.5f,
+       .quality = 0},
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(
+      *this->lcp_repo, find_by_observation_id("to-1", false)
+    ).WillOnce(::testing::Return(points));
+
+    auto result = this->service->get_light_curve(
+      "to-1", false, this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->tess_observation_id, "to-1");
+    EXPECT_EQ(result->obsid, "obs-1");
+    EXPECT_EQ(result->point_count, 2);
+    EXPECT_EQ(result->points.size(), 2);
+    EXPECT_DOUBLE_EQ(result->points[0].time, 1325.5);
+  }
+
+  TEST_F(TargetServiceTest, GetLightCurveWithQualityFilter) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = "mast:TESS/product/lc.fits",
+    };
+
+    auto filtered_points =
+      std::vector<Nyx::Domain::LightCurvePoint>{
+        {.id = 1, .tess_observation_id = "to-1",
+         .time = 1325.5, .pdcsap_flux = 100.0f,
+         .pdcsap_flux_err = 0.5f, .sap_flux = 101.0f,
+         .quality = 0},
+      };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(
+      *this->lcp_repo, find_by_observation_id("to-1", true)
+    ).WillOnce(::testing::Return(filtered_points));
+
+    auto result = this->service->get_light_curve(
+      "to-1", true, this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->point_count, 1);
+  }
+
+  TEST_F(TargetServiceTest, GetLightCurveEmpty) {
+    auto observation = Nyx::Domain::TessObservation{
+      .id = "to-1", .target_id = "t-1", .obsid = "obs-1",
+      .cadence_seconds = 120,
+      .start_time = 58325.0, .end_time = 58352.0,
+      .data_uri = std::nullopt,
+    };
+
+    EXPECT_CALL(*this->tess_obs_repo, find_by_id("to-1"))
+      .WillOnce(::testing::Return(
+        std::optional<Nyx::Domain::TessObservation>(observation)
+      ));
+    EXPECT_CALL(
+      *this->lcp_repo, find_by_observation_id("to-1", false)
+    ).WillOnce(::testing::Return(
+      std::vector<Nyx::Domain::LightCurvePoint>{}
+    ));
+
+    auto result = this->service->get_light_curve(
+      "to-1", false, this->logger
+    );
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->point_count, 0);
+    EXPECT_TRUE(result->points.empty());
   }
 } // namespace Nyx::Application::Target::Tests

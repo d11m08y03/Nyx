@@ -13,6 +13,7 @@ find_package(simdjson REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(unofficial-sodium REQUIRED)
 find_package(nlohmann_json_schema_validator REQUIRED)
+find_package(cfitsio REQUIRED)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 
@@ -26,6 +27,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     jwt-cpp::jwt-cpp
     unofficial-sodium::sodium
     nlohmann_json_schema_validator::validator
+    CFITSIO::cfitsio
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE src)

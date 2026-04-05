@@ -6,12 +6,17 @@ namespace Nyx::Application::Target {
     std::shared_ptr<Nyx::Domain::ITargetRepository> target_repository,
     std::shared_ptr<Nyx::Domain::ITessObservationRepository>
       tess_observation_repository,
-    std::shared_ptr<Nyx::Core::IUuidGenerator> uuid_generator
+    std::shared_ptr<Nyx::Core::IUuidGenerator> uuid_generator,
+    std::shared_ptr<Nyx::Domain::ILightCurvePointRepository>
+      light_curve_point_repository,
+    std::shared_ptr<IFitsParser> fits_parser
   )
     : mast_client(std::move(mast_client))
     , target_repository(std::move(target_repository))
     , tess_observation_repository(std::move(tess_observation_repository))
-    , uuid_generator(std::move(uuid_generator)) {
+    , uuid_generator(std::move(uuid_generator))
+    , light_curve_point_repository(std::move(light_curve_point_repository))
+    , fits_parser(std::move(fits_parser)) {
     spdlog::debug("TargetService initialized");
   }
 
@@ -265,5 +270,309 @@ namespace Nyx::Application::Target {
     }
 
     return this->build_observation_responses(target_id, logger);
+  }
+
+  auto TargetService::discover_products(
+    const std::string& observation_id,
+    std::shared_ptr<spdlog::logger> logger
+  ) -> Nyx::Core::Result<TessObservationResponse> {
+    logger->debug(
+      "Discovering products for observation_id={}",
+      observation_id
+    );
+
+    auto obs_result =
+      this->tess_observation_repository->find_by_id(observation_id);
+
+    if (!obs_result.has_value()) {
+      return std::unexpected(obs_result.error());
+    }
+
+    if (!obs_result->has_value()) {
+      return std::unexpected(
+        Nyx::Core::AppError::not_found(
+          "TESS observation not found"
+        )
+      );
+    }
+
+    auto observation = obs_result->value();
+
+    if (observation.data_uri.has_value()) {
+      logger->info(
+        "Observation {} already has data_uri, skipping discovery",
+        observation_id
+      );
+      return TessObservationResponse{
+        .id = observation.id,
+        .obsid = observation.obsid,
+        .cadence_seconds = observation.cadence_seconds,
+        .start_time = observation.start_time,
+        .end_time = observation.end_time,
+        .data_uri = observation.data_uri,
+      };
+    }
+
+    auto products_result = this->mast_client->get_data_products(
+      observation.obsid
+    );
+
+    if (!products_result.has_value()) {
+      logger->error(
+        "Failed to get data products for obsid={}",
+        observation.obsid
+      );
+      return std::unexpected(products_result.error());
+    }
+
+    auto lc_data_uri = std::string{};
+
+    for (const auto& product : products_result.value()) {
+      if (product.description == "Light curves"
+        && product.product_type == "SCIENCE"
+        && product.filename.ends_with("_lc.fits")) {
+        lc_data_uri = product.data_uri;
+        break;
+      }
+    }
+
+    if (lc_data_uri.empty()) {
+      logger->warn(
+        "No light curve FITS file found for obsid={}",
+        observation.obsid
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::not_found(
+          "No light curve FITS file found in data products"
+        )
+      );
+    }
+
+    logger->info(
+      "Found light curve data_uri='{}' for obsid={}",
+      lc_data_uri, observation.obsid
+    );
+
+    auto update_result =
+      this->tess_observation_repository->update_data_uri(
+        observation_id, lc_data_uri
+      );
+
+    if (!update_result.has_value()) {
+      return std::unexpected(update_result.error());
+    }
+
+    auto updated = update_result.value();
+
+    return TessObservationResponse{
+      .id = updated.id,
+      .obsid = updated.obsid,
+      .cadence_seconds = updated.cadence_seconds,
+      .start_time = updated.start_time,
+      .end_time = updated.end_time,
+      .data_uri = updated.data_uri,
+    };
+  }
+
+  auto TargetService::fetch_light_curve(
+    const std::string& observation_id,
+    std::shared_ptr<spdlog::logger> logger
+  ) -> Nyx::Core::Result<LightCurveMetadataResponse> {
+    logger->debug(
+      "Fetching light curve for observation_id={}",
+      observation_id
+    );
+
+    auto obs_result =
+      this->tess_observation_repository->find_by_id(observation_id);
+
+    if (!obs_result.has_value()) {
+      return std::unexpected(obs_result.error());
+    }
+
+    if (!obs_result->has_value()) {
+      return std::unexpected(
+        Nyx::Core::AppError::not_found(
+          "TESS observation not found"
+        )
+      );
+    }
+
+    auto observation = obs_result->value();
+
+    if (!observation.data_uri.has_value()) {
+      return std::unexpected(
+        Nyx::Core::AppError::validation(
+          "Observation has no data_uri. "
+          "Call discover-products first."
+        )
+      );
+    }
+
+    auto count_result =
+      this->light_curve_point_repository->count_by_observation_id(
+        observation_id
+      );
+
+    if (!count_result.has_value()) {
+      return std::unexpected(count_result.error());
+    }
+
+    if (count_result.value() > 0) {
+      logger->info(
+        "Light curve already fetched for observation_id={} "
+        "({} points)",
+        observation_id, count_result.value()
+      );
+
+      auto points_result =
+        this->light_curve_point_repository->find_by_observation_id(
+          observation_id, false
+        );
+
+      if (!points_result.has_value()) {
+        return std::unexpected(points_result.error());
+      }
+
+      auto time_min = 0.0;
+      auto time_max = 0.0;
+      if (!points_result->empty()) {
+        time_min = points_result->front().time;
+        time_max = points_result->back().time;
+      }
+
+      return LightCurveMetadataResponse{
+        .tess_observation_id = observation_id,
+        .obsid = observation.obsid,
+        .point_count = count_result.value(),
+        .time_min = time_min,
+        .time_max = time_max,
+      };
+    }
+
+    logger->info(
+      "Downloading FITS file from '{}'",
+      observation.data_uri.value()
+    );
+
+    auto download_result = this->mast_client->download_fits(
+      observation.data_uri.value()
+    );
+
+    if (!download_result.has_value()) {
+      logger->error(
+        "Failed to download FITS file for observation_id={}",
+        observation_id
+      );
+      return std::unexpected(download_result.error());
+    }
+
+    logger->info(
+      "Parsing FITS data ({} bytes)",
+      download_result->size()
+    );
+
+    auto parse_result = this->fits_parser->parse_light_curve(
+      download_result.value()
+    );
+
+    if (!parse_result.has_value()) {
+      logger->error(
+        "Failed to parse FITS file for observation_id={}",
+        observation_id
+      );
+      return std::unexpected(parse_result.error());
+    }
+
+    auto& points = parse_result.value();
+
+    logger->info(
+      "Inserting {} light curve points for observation_id={}",
+      points.size(), observation_id
+    );
+
+    auto insert_result =
+      this->light_curve_point_repository->bulk_create(
+        observation_id, points
+      );
+
+    if (!insert_result.has_value()) {
+      return std::unexpected(insert_result.error());
+    }
+
+    auto time_min = 0.0;
+    auto time_max = 0.0;
+    if (!points.empty()) {
+      time_min = points.front().time;
+      time_max = points.back().time;
+    }
+
+    return LightCurveMetadataResponse{
+      .tess_observation_id = observation_id,
+      .obsid = observation.obsid,
+      .point_count = insert_result.value(),
+      .time_min = time_min,
+      .time_max = time_max,
+    };
+  }
+
+  auto TargetService::get_light_curve(
+    const std::string& observation_id,
+    bool quality_filter,
+    std::shared_ptr<spdlog::logger> logger
+  ) -> Nyx::Core::Result<LightCurveResponse> {
+    logger->debug(
+      "Getting light curve for observation_id={}, "
+      "quality_filter={}",
+      observation_id, quality_filter
+    );
+
+    auto obs_result =
+      this->tess_observation_repository->find_by_id(observation_id);
+
+    if (!obs_result.has_value()) {
+      return std::unexpected(obs_result.error());
+    }
+
+    if (!obs_result->has_value()) {
+      return std::unexpected(
+        Nyx::Core::AppError::not_found(
+          "TESS observation not found"
+        )
+      );
+    }
+
+    auto observation = obs_result->value();
+
+    auto points_result =
+      this->light_curve_point_repository->find_by_observation_id(
+        observation_id, quality_filter
+      );
+
+    if (!points_result.has_value()) {
+      return std::unexpected(points_result.error());
+    }
+
+    auto point_responses =
+      std::vector<LightCurvePointResponse>{};
+    point_responses.reserve(points_result->size());
+
+    for (const auto& point : points_result.value()) {
+      point_responses.push_back(LightCurvePointResponse{
+        .time = point.time,
+        .pdcsap_flux = point.pdcsap_flux,
+        .pdcsap_flux_err = point.pdcsap_flux_err,
+        .sap_flux = point.sap_flux,
+        .quality = point.quality,
+      });
+    }
+
+    return LightCurveResponse{
+      .tess_observation_id = observation_id,
+      .obsid = observation.obsid,
+      .point_count =
+        static_cast<int>(point_responses.size()),
+      .points = std::move(point_responses),
+    };
   }
 } // namespace Nyx::Application::Target

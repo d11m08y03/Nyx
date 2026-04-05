@@ -21,6 +21,13 @@ namespace Nyx::Application::Target {
     double end_time;
   };
 
+  struct DataProduct {
+    std::string data_uri;
+    std::string description;
+    std::string product_type;
+    std::string filename;
+  };
+
   class IMastClient {
     public:
       virtual ~IMastClient() = default;
@@ -32,5 +39,13 @@ namespace Nyx::Application::Target {
       virtual auto search_tess_timeseries(
         double ra, double dec, double radius = 0.005
       ) -> Nyx::Core::Result<std::vector<MastObservation>> = 0;
+
+      virtual auto get_data_products(
+        const std::string& obsid
+      ) -> Nyx::Core::Result<std::vector<DataProduct>> = 0;
+
+      virtual auto download_fits(
+        const std::string& data_uri
+      ) -> Nyx::Core::Result<std::string> = 0;
   };
 } // namespace Nyx::Application::Target

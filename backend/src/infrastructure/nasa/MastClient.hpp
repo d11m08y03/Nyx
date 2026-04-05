@@ -21,6 +21,16 @@ namespace Nyx::Infrastructure::Nasa {
         std::vector<Nyx::Application::Target::MastObservation>
       > override;
 
+      auto get_data_products(
+        const std::string& obsid
+      ) -> Nyx::Core::Result<
+        std::vector<Nyx::Application::Target::DataProduct>
+      > override;
+
+      auto download_fits(
+        const std::string& data_uri
+      ) -> Nyx::Core::Result<std::string> override;
+
     private:
       auto invoke_mast_service(
         const std::string& request_json

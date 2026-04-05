@@ -247,4 +247,255 @@ namespace Nyx::Infrastructure::Nasa {
       });
     }
   }
+  auto MastClient::get_data_products(
+    const std::string& obsid
+  ) -> Nyx::Core::Result<
+    std::vector<Nyx::Application::Target::DataProduct>
+  > {
+    spdlog::debug("Getting data products for obsid='{}'", obsid);
+
+    auto request_payload = nlohmann::json{
+      {"service", "Mast.Caom.Products"},
+      {"params", {{"obsid", obsid}, {"format", "json"}}}
+    };
+
+    auto body_result = this->invoke_mast_service(
+      request_payload.dump()
+    );
+    if (!body_result.has_value()) {
+      return std::unexpected(body_result.error());
+    }
+
+    try {
+      auto response_json = nlohmann::json::parse(
+        body_result.value()
+      );
+
+      auto tables = response_json.value(
+        "Tables", nlohmann::json::array()
+      );
+      if (tables.empty()) {
+        spdlog::info(
+          "No data products found for obsid={}", obsid
+        );
+        return std::vector<
+          Nyx::Application::Target::DataProduct
+        >{};
+      }
+
+      auto table = tables[0];
+      auto fields = table.value(
+        "Fields", nlohmann::json::array()
+      );
+      auto rows = table.value(
+        "Rows", nlohmann::json::array()
+      );
+
+      auto uri_index = -1;
+      auto desc_index = -1;
+      auto type_index = -1;
+      auto filename_index = -1;
+
+      for (auto i = 0;
+        i < static_cast<int>(fields.size()); ++i) {
+        auto field_name = fields[i].value("name", "");
+        if (field_name == "dataURI") uri_index = i;
+        else if (field_name == "description") desc_index = i;
+        else if (field_name == "productType") type_index = i;
+        else if (field_name == "productFilename") {
+          filename_index = i;
+        }
+      }
+
+      if (uri_index < 0 || filename_index < 0) {
+        if (rows.empty()) {
+          return std::vector<
+            Nyx::Application::Target::DataProduct
+          >{};
+        }
+        spdlog::error(
+          "MAST products response missing expected columns"
+        );
+        return std::unexpected(Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST products response missing expected columns",
+          {}
+        });
+      }
+
+      auto products = std::vector<
+        Nyx::Application::Target::DataProduct
+      >{};
+
+      for (const auto& row : rows) {
+        auto product = Nyx::Application::Target::DataProduct{
+          .data_uri = row[uri_index].is_string()
+            ? row[uri_index].get<std::string>() : "",
+          .description = (desc_index >= 0
+            && row[desc_index].is_string())
+            ? row[desc_index].get<std::string>() : "",
+          .product_type = (type_index >= 0
+            && row[type_index].is_string())
+            ? row[type_index].get<std::string>() : "",
+          .filename = row[filename_index].is_string()
+            ? row[filename_index].get<std::string>() : "",
+        };
+        products.push_back(std::move(product));
+      }
+
+      spdlog::info(
+        "Found {} data products for obsid={}",
+        products.size(), obsid
+      );
+
+      return products;
+    } catch (const nlohmann::json::exception& exception) {
+      spdlog::error(
+        "Failed to parse MAST products response: {}",
+        exception.what()
+      );
+      return std::unexpected(Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::ExternalServiceError,
+        "Failed to parse MAST response", {}
+      });
+    }
+  }
+
+  auto MastClient::download_fits(
+    const std::string& data_uri
+  ) -> Nyx::Core::Result<std::string> {
+    spdlog::debug("Downloading FITS file: {}", data_uri);
+
+    try {
+      auto client = drogon::HttpClient::newHttpClient(
+        "https://mast.stsci.edu"
+      );
+      client->setUserAgent("Nyx/1.0");
+
+      auto download_path = std::string{"/api/v0.1/Download/file"};
+      auto full_path = download_path + "?uri=" + data_uri;
+
+      auto request = drogon::HttpRequest::newHttpRequest();
+      request->setMethod(drogon::Get);
+      request->setPath(full_path);
+
+      spdlog::debug("MAST download request: GET {}", full_path);
+
+      auto [result, response] = client->sendRequest(
+        request, 120.0
+      );
+
+      if (result != drogon::ReqResult::Ok) {
+        spdlog::error("MAST download request failed: network error");
+        return std::unexpected(Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST download request failed", {}
+        });
+      }
+
+      auto status_code = response->getStatusCode();
+      spdlog::debug(
+        "MAST download response: status={}",
+        static_cast<int>(status_code)
+      );
+
+      if (status_code == drogon::k307TemporaryRedirect
+        || status_code == drogon::k302Found
+        || status_code == drogon::k301MovedPermanently) {
+        auto location = std::string{
+          response->getHeader("Location")
+        };
+
+        if (location.empty()) {
+          spdlog::error("MAST redirect missing Location header");
+          return std::unexpected(Nyx::Core::AppError{
+            Nyx::Core::ErrorCode::ExternalServiceError,
+            "MAST redirect missing Location header", {}
+          });
+        }
+
+        spdlog::debug("Following redirect to: {}", location);
+
+        auto scheme_end = location.find("://");
+        if (scheme_end == std::string::npos) {
+          spdlog::error("Invalid redirect URL: {}", location);
+          return std::unexpected(Nyx::Core::AppError{
+            Nyx::Core::ErrorCode::ExternalServiceError,
+            "Invalid redirect URL", {}
+          });
+        }
+
+        auto path_start = location.find('/', scheme_end + 3);
+        auto redirect_host = (path_start != std::string::npos)
+          ? location.substr(0, path_start) : location;
+        auto redirect_path = (path_start != std::string::npos)
+          ? location.substr(path_start) : "/";
+
+        auto redirect_client =
+          drogon::HttpClient::newHttpClient(redirect_host);
+        redirect_client->setUserAgent("Nyx/1.0");
+
+        auto redirect_request =
+          drogon::HttpRequest::newHttpRequest();
+        redirect_request->setMethod(drogon::Get);
+        redirect_request->setPath(redirect_path);
+
+        auto [redirect_result, redirect_response] =
+          redirect_client->sendRequest(redirect_request, 120.0);
+
+        if (redirect_result != drogon::ReqResult::Ok) {
+          spdlog::error("FITS download failed after redirect");
+          return std::unexpected(Nyx::Core::AppError{
+            Nyx::Core::ErrorCode::ExternalServiceError,
+            "FITS download failed after redirect", {}
+          });
+        }
+
+        if (redirect_response->getStatusCode()
+          != drogon::k200OK) {
+          spdlog::error(
+            "FITS download returned status {}",
+            static_cast<int>(
+              redirect_response->getStatusCode()
+            )
+          );
+          return std::unexpected(Nyx::Core::AppError{
+            Nyx::Core::ErrorCode::ExternalServiceError,
+            "FITS download returned non-200 status", {}
+          });
+        }
+
+        auto body = std::string(redirect_response->body());
+        spdlog::info(
+          "Downloaded FITS file: {} bytes", body.size()
+        );
+        return body;
+      }
+
+      if (status_code != drogon::k200OK) {
+        spdlog::error(
+          "MAST download returned status {}",
+          static_cast<int>(status_code)
+        );
+        return std::unexpected(Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST download returned non-200 status", {}
+        });
+      }
+
+      auto body = std::string(response->body());
+      spdlog::info(
+        "Downloaded FITS file: {} bytes", body.size()
+      );
+      return body;
+    } catch (const std::exception& exception) {
+      spdlog::error(
+        "MAST download exception: {}", exception.what()
+      );
+      return std::unexpected(Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::ExternalServiceError,
+        "MAST download request failed", {}
+      });
+    }
+  }
 } // namespace Nyx::Infrastructure::Nasa

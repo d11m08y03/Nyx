@@ -23,5 +23,13 @@ namespace Nyx::Domain {
       virtual auto find_by_obsid(
         const std::string& obsid
       ) -> Nyx::Core::Result<std::optional<TessObservation>> = 0;
+
+      virtual auto find_by_id(
+        const std::string& id
+      ) -> Nyx::Core::Result<std::optional<TessObservation>> = 0;
+
+      virtual auto update_data_uri(
+        const std::string& id, const std::string& data_uri
+      ) -> Nyx::Core::Result<TessObservation> = 0;
   };
 } // namespace Nyx::Domain

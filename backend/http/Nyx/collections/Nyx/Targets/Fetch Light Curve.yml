@@ -1,0 +1,20 @@
+info:
+  name: Fetch Light Curve
+  type: http
+  seq: 5
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/tess-observations/{{TESS_OBSERVATION_ID}}/fetch-light-curve"
+  auth: inherit
+
+runtime:
+  variables:
+    - name: TESS_OBSERVATION_ID
+      value: 22a40b52-7575-4ed9-aed8-abe4498b6962
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -12,6 +12,7 @@
     "jwt-cpp",
     "libsodium",
     "json-schema-validator",
-    "gtest"
+    "gtest",
+    "cfitsio"
   ]
 }

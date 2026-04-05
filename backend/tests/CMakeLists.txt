@@ -10,6 +10,7 @@ set(TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/application/equipment/EquipmentService.cpp
     ${CMAKE_SOURCE_DIR}/src/application/location/LocationService.cpp
     ${CMAKE_SOURCE_DIR}/src/application/target/TargetService.cpp
+    ${CMAKE_SOURCE_DIR}/src/infrastructure/nasa/FitsParser.cpp
 )
 
 add_executable(nyx-tests ${TEST_SOURCES} ${TESTABLE_SOURCES})
@@ -25,6 +26,7 @@ target_link_libraries(nyx-tests PRIVATE
     jwt-cpp::jwt-cpp
     unofficial-sodium::sodium
     nlohmann_json_schema_validator::validator
+    CFITSIO::cfitsio
 )
 
 target_include_directories(nyx-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

@@ -16,5 +16,12 @@ namespace Nyx::Infrastructure::Persistence {
         -> Nyx::Core::Result<
           std::optional<Nyx::Domain::TessObservation>
         > override;
+      auto find_by_id(const std::string& id)
+        -> Nyx::Core::Result<
+          std::optional<Nyx::Domain::TessObservation>
+        > override;
+      auto update_data_uri(
+        const std::string& id, const std::string& data_uri
+      ) -> Nyx::Core::Result<Nyx::Domain::TessObservation> override;
   };
 } // namespace Nyx::Infrastructure::Persistence
