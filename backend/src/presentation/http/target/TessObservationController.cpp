@@ -11,6 +11,7 @@
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <trantor/utils/Date.h>
 
 namespace Nyx::Presentation::Http::Target {
   TessObservationController::TessObservationController() {
@@ -189,7 +190,7 @@ namespace Nyx::Presentation::Http::Target {
     auto quality_filter = (quality_filter_param == "true"
       || quality_filter_param == "1");
 
-    auto result = this->target_service->get_light_curve(
+    auto result = this->target_service->get_light_curve_json(
       id, quality_filter, logger
     );
 
@@ -200,32 +201,27 @@ namespace Nyx::Presentation::Http::Target {
       return;
     }
 
-    auto points_array = nlohmann::json::array();
-    for (const auto& point : result->points) {
-      points_array.push_back(nlohmann::json{
-        {"time", point.time},
-        {"pdcsap_flux", point.pdcsap_flux.has_value()
-          ? nlohmann::json(point.pdcsap_flux.value())
-          : nlohmann::json(nullptr)},
-        {"pdcsap_flux_err", point.pdcsap_flux_err.has_value()
-          ? nlohmann::json(point.pdcsap_flux_err.value())
-          : nlohmann::json(nullptr)},
-        {"sap_flux", point.sap_flux.has_value()
-          ? nlohmann::json(point.sap_flux.value())
-          : nlohmann::json(nullptr)},
-        {"quality", point.quality},
-      });
-    }
+    auto buf = std::string{};
+    buf.reserve(result->points_json.size() + 256);
 
-    auto response_json = nlohmann::json{
-      {"tess_observation_id", result->tess_observation_id},
-      {"obsid", result->obsid},
-      {"point_count", result->point_count},
-      {"points", points_array},
-    };
+    buf += "{\"data\":{\"tess_observation_id\":\"";
+    buf += result->tess_observation_id;
+    buf += "\",\"obsid\":\"";
+    buf += result->obsid;
+    buf += "\",\"point_count\":";
+    buf += std::to_string(result->point_count);
+    buf += ",\"points\":";
+    buf += result->points_json;
+    buf += "},\"meta\":{\"request_id\":\"";
+    buf += correlation_id;
+    buf += "\",\"timestamp\":\"";
+    buf += trantor::Date::now().toFormattedString(false);
+    buf += "\"}}";
 
-    callback(ResponseHelper::success(
-      response_json, correlation_id
-    ));
+    auto response = drogon::HttpResponse::newHttpResponse();
+    response->setStatusCode(drogon::k200OK);
+    response->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+    response->setBody(std::move(buf));
+    callback(response);
   }
 } // namespace Nyx::Presentation::Http::Target

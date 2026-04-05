@@ -21,6 +21,11 @@ namespace Nyx::Domain {
         bool quality_filter
       ) -> Nyx::Core::Result<std::vector<LightCurvePoint>> = 0;
 
+      virtual auto find_by_observation_id_as_json(
+        const std::string& observation_id,
+        bool quality_filter
+      ) -> Nyx::Core::Result<std::string> = 0;
+
       virtual auto count_by_observation_id(
         const std::string& observation_id
       ) -> Nyx::Core::Result<int> = 0;

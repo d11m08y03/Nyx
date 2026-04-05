@@ -8,29 +8,6 @@ namespace Nyx::Infrastructure::Persistence {
   static constexpr auto BATCH_SIZE = 5000;
   static constexpr auto PARAMS_PER_ROW = 6;
 
-  static auto row_to_light_curve_point(
-    const drogon::orm::Row& row
-  ) -> Nyx::Domain::LightCurvePoint {
-    return Nyx::Domain::LightCurvePoint{
-      .id = row["id"].as<int64_t>(),
-      .tess_observation_id =
-        row["tess_observation_id"].as<std::string>(),
-      .time = row["time"].as<double>(),
-      .pdcsap_flux = row["pdcsap_flux"].isNull()
-        ? std::nullopt
-        : std::optional<float>(row["pdcsap_flux"].as<float>()),
-      .pdcsap_flux_err = row["pdcsap_flux_err"].isNull()
-        ? std::nullopt
-        : std::optional<float>(
-            row["pdcsap_flux_err"].as<float>()
-          ),
-      .sap_flux = row["sap_flux"].isNull()
-        ? std::nullopt
-        : std::optional<float>(row["sap_flux"].as<float>()),
-      .quality = row["quality"].as<int>(),
-    };
-  }
-
   static auto optional_float_to_string(
     const std::optional<float>& value
   ) -> std::string {
@@ -129,8 +106,8 @@ namespace Nyx::Infrastructure::Persistence {
       auto db = drogon::app().getDbClient();
 
       auto query = std::string{
-        "SELECT id, tess_observation_id, time, pdcsap_flux, "
-        "pdcsap_flux_err, sap_flux, quality "
+        "SELECT time, pdcsap_flux, pdcsap_flux_err, "
+        "sap_flux, quality "
         "FROM light_curve_points "
         "WHERE tess_observation_id = $1"
       };
@@ -145,13 +122,69 @@ namespace Nyx::Infrastructure::Persistence {
 
       auto points = std::vector<Nyx::Domain::LightCurvePoint>{};
       points.reserve(result.size());
+      // Columns by index: 0=time, 1=pdcsap_flux,
+      // 2=pdcsap_flux_err, 3=sap_flux, 4=quality
       for (const auto& row : result) {
-        points.push_back(row_to_light_curve_point(row));
+        points.push_back(Nyx::Domain::LightCurvePoint{
+          .id = 0,
+          .tess_observation_id = {},
+          .time = row[0].as<double>(),
+          .pdcsap_flux = row[1].isNull()
+            ? std::nullopt
+            : std::optional<float>(row[1].as<float>()),
+          .pdcsap_flux_err = row[2].isNull()
+            ? std::nullopt
+            : std::optional<float>(row[2].as<float>()),
+          .sap_flux = row[3].isNull()
+            ? std::nullopt
+            : std::optional<float>(row[3].as<float>()),
+          .quality = row[4].as<int>(),
+        });
       }
       return points;
     } catch (const drogon::orm::DrogonDbException& exception) {
       spdlog::error(
         "Database error fetching light curve points: {}",
+        exception.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal("Database error")
+      );
+    }
+  }
+
+  auto PostgresLightCurvePointRepository::find_by_observation_id_as_json(
+    const std::string& observation_id,
+    bool quality_filter
+  ) -> Nyx::Core::Result<std::string> {
+    try {
+      auto db = drogon::app().getDbClient();
+
+      auto query = std::string{
+        "SELECT COALESCE(json_agg("
+        "json_build_object("
+        "'time', time, "
+        "'pdcsap_flux', pdcsap_flux, "
+        "'pdcsap_flux_err', pdcsap_flux_err, "
+        "'sap_flux', sap_flux, "
+        "'quality', quality"
+        ") ORDER BY time ASC), '[]'::json)::text "
+        "FROM light_curve_points "
+        "WHERE tess_observation_id = $1"
+      };
+
+      if (quality_filter) {
+        query += " AND quality = 0";
+      }
+
+      auto result = db->execSqlSync(
+        query, observation_id
+      );
+
+      return result[0][0].as<std::string>();
+    } catch (const drogon::orm::DrogonDbException& exception) {
+      spdlog::error(
+        "Database error fetching light curve JSON: {}",
         exception.base().what()
       );
       return std::unexpected(

@@ -1,5 +1,7 @@
 #include "application/target/TargetService.hpp"
 
+#include <chrono>
+
 namespace Nyx::Application::Target {
   TargetService::TargetService(
     std::shared_ptr<IMastClient> mast_client,
@@ -139,60 +141,119 @@ namespace Nyx::Application::Target {
         return std::unexpected(tess_result.error());
       }
 
+      constexpr auto max_single_sector_days = 30.0;
+
+      auto single_sector_obs =
+        std::vector<MastObservation>{};
       for (const auto& mast_obs : tess_result.value()) {
-        auto existing_obs =
-          this->tess_observation_repository->find_by_obsid(
-            mast_obs.obsid
-          );
-
-        if (existing_obs.has_value()
-          && existing_obs->has_value()) {
+        auto span_days =
+          mast_obs.end_time - mast_obs.start_time;
+        if (span_days > max_single_sector_days) {
           logger->debug(
-            "TESS observation obsid={} already exists, skipping",
-            mast_obs.obsid
-          );
-          auto obs = existing_obs->value();
-          tess_observations.push_back(TessObservationResponse{
-            .id = obs.id,
-            .obsid = obs.obsid,
-            .cadence_seconds = obs.cadence_seconds,
-            .start_time = obs.start_time,
-            .end_time = obs.end_time,
-            .data_uri = obs.data_uri,
-          });
-          continue;
-        }
-
-        auto observation = Nyx::Domain::TessObservation{
-          .id = this->uuid_generator->generate(),
-          .target_id = created.id,
-          .obsid = mast_obs.obsid,
-          .cadence_seconds = mast_obs.cadence_seconds,
-          .start_time = mast_obs.start_time,
-          .end_time = mast_obs.end_time,
-          .data_uri = std::nullopt,
-        };
-
-        auto obs_create_result =
-          this->tess_observation_repository->create(observation);
-
-        if (!obs_create_result.has_value()) {
-          logger->warn(
-            "Failed to persist TESS observation obsid={}",
-            mast_obs.obsid
+            "Skipping multi-sector observation obsid={} "
+            "(span={:.1f} days)",
+            mast_obs.obsid, span_days
           );
           continue;
         }
+        single_sector_obs.push_back(mast_obs);
+      }
 
-        auto created_obs = obs_create_result.value();
-        tess_observations.push_back(TessObservationResponse{
-          .id = created_obs.id,
-          .obsid = created_obs.obsid,
-          .cadence_seconds = created_obs.cadence_seconds,
-          .start_time = created_obs.start_time,
-          .end_time = created_obs.end_time,
-          .data_uri = created_obs.data_uri,
-        });
+      auto obsids = std::vector<std::string>{};
+      obsids.reserve(single_sector_obs.size());
+      for (const auto& obs : single_sector_obs) {
+        obsids.push_back(obs.obsid);
+      }
+
+      auto existing_result =
+        this->tess_observation_repository
+          ->find_existing_obsids(obsids);
+
+      if (!existing_result.has_value()) {
+        logger->error(
+          "Failed to check existing obsids for target "
+          "id={}",
+          created.id
+        );
+        return std::unexpected(existing_result.error());
+      }
+
+      auto& existing_obsids = existing_result.value();
+
+      auto new_observations =
+        std::vector<Nyx::Domain::TessObservation>{};
+      for (const auto& mast_obs : single_sector_obs) {
+        if (existing_obsids.contains(mast_obs.obsid)) {
+          logger->debug(
+            "TESS observation obsid={} already exists, "
+            "skipping",
+            mast_obs.obsid
+          );
+          continue;
+        }
+
+        new_observations.push_back(
+          Nyx::Domain::TessObservation{
+            .id = this->uuid_generator->generate(),
+            .target_id = created.id,
+            .obsid = mast_obs.obsid,
+            .cadence_seconds = mast_obs.cadence_seconds,
+            .start_time = mast_obs.start_time,
+            .end_time = mast_obs.end_time,
+            .data_uri = std::nullopt,
+          }
+        );
+      }
+
+      if (!new_observations.empty()) {
+        auto bulk_result =
+          this->tess_observation_repository->bulk_create(
+            new_observations
+          );
+
+        if (!bulk_result.has_value()) {
+          logger->error(
+            "Failed to bulk create TESS observations "
+            "for target id={}",
+            created.id
+          );
+          return std::unexpected(bulk_result.error());
+        }
+
+        for (const auto& obs : bulk_result.value()) {
+          tess_observations.push_back(
+            TessObservationResponse{
+              .id = obs.id,
+              .obsid = obs.obsid,
+              .cadence_seconds = obs.cadence_seconds,
+              .start_time = obs.start_time,
+              .end_time = obs.end_time,
+              .data_uri = obs.data_uri,
+            }
+          );
+        }
+      }
+
+      auto existing_obs_result =
+        this->tess_observation_repository
+          ->find_by_target_id(created.id);
+      if (existing_obs_result.has_value()) {
+        for (const auto& obs :
+          existing_obs_result.value()) {
+          if (!existing_obsids.contains(obs.obsid)) {
+            continue;
+          }
+          tess_observations.push_back(
+            TessObservationResponse{
+              .id = obs.id,
+              .obsid = obs.obsid,
+              .cadence_seconds = obs.cadence_seconds,
+              .start_time = obs.start_time,
+              .end_time = obs.end_time,
+              .data_uri = obs.data_uri,
+            }
+          );
+        }
       }
 
       logger->info(
@@ -544,35 +605,101 @@ namespace Nyx::Application::Target {
 
     auto observation = obs_result->value();
 
+    auto db_start = std::chrono::steady_clock::now();
+
     auto points_result =
       this->light_curve_point_repository->find_by_observation_id(
         observation_id, quality_filter
       );
 
+    auto db_elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - db_start
+      ).count();
+    logger->debug(
+      "Light curve DB fetch took {}ms ({} points)",
+      db_elapsed,
+      points_result.has_value() ? points_result->size() : 0
+    );
+
     if (!points_result.has_value()) {
       return std::unexpected(points_result.error());
-    }
-
-    auto point_responses =
-      std::vector<LightCurvePointResponse>{};
-    point_responses.reserve(points_result->size());
-
-    for (const auto& point : points_result.value()) {
-      point_responses.push_back(LightCurvePointResponse{
-        .time = point.time,
-        .pdcsap_flux = point.pdcsap_flux,
-        .pdcsap_flux_err = point.pdcsap_flux_err,
-        .sap_flux = point.sap_flux,
-        .quality = point.quality,
-      });
     }
 
     return LightCurveResponse{
       .tess_observation_id = observation_id,
       .obsid = observation.obsid,
       .point_count =
-        static_cast<int>(point_responses.size()),
-      .points = std::move(point_responses),
+        static_cast<int>(points_result->size()),
+      .points = std::move(points_result.value()),
+    };
+  }
+  auto TargetService::get_light_curve_json(
+    const std::string& observation_id,
+    bool quality_filter,
+    std::shared_ptr<spdlog::logger> logger
+  ) -> Nyx::Core::Result<LightCurveJsonResponse> {
+    logger->debug(
+      "Getting light curve JSON for observation_id={}, "
+      "quality_filter={}",
+      observation_id, quality_filter
+    );
+
+    auto obs_result =
+      this->tess_observation_repository->find_by_id(
+        observation_id
+      );
+
+    if (!obs_result.has_value()) {
+      return std::unexpected(obs_result.error());
+    }
+
+    if (!obs_result->has_value()) {
+      return std::unexpected(
+        Nyx::Core::AppError::not_found(
+          "TESS observation not found"
+        )
+      );
+    }
+
+    auto observation = obs_result->value();
+
+    auto count_result =
+      this->light_curve_point_repository
+        ->count_by_observation_id(observation_id);
+
+    if (!count_result.has_value()) {
+      return std::unexpected(count_result.error());
+    }
+
+    auto db_start = std::chrono::steady_clock::now();
+
+    auto json_result =
+      this->light_curve_point_repository
+        ->find_by_observation_id_as_json(
+          observation_id, quality_filter
+        );
+
+    auto db_elapsed =
+      std::chrono::duration_cast<
+        std::chrono::milliseconds
+      >(
+        std::chrono::steady_clock::now() - db_start
+      ).count();
+    logger->debug(
+      "Light curve JSON DB fetch took {}ms",
+      db_elapsed
+    );
+
+    if (!json_result.has_value()) {
+      return std::unexpected(json_result.error());
+    }
+
+    return LightCurveJsonResponse{
+      .tess_observation_id = observation_id,
+      .obsid = observation.obsid,
+      .point_count = count_result.value(),
+      .points_json = std::move(json_result.value()),
     };
   }
 } // namespace Nyx::Application::Target

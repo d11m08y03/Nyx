@@ -1,5 +1,7 @@
 #pragma once
 
+#include "domain/entities/LightCurvePoint.hpp"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,14 +29,6 @@ namespace Nyx::Application::Target {
     std::vector<TessObservationResponse> tess_observations;
   };
 
-  struct LightCurvePointResponse {
-    double time;
-    std::optional<float> pdcsap_flux;
-    std::optional<float> pdcsap_flux_err;
-    std::optional<float> sap_flux;
-    int quality;
-  };
-
   struct LightCurveMetadataResponse {
     std::string tess_observation_id;
     std::string obsid;
@@ -47,6 +41,13 @@ namespace Nyx::Application::Target {
     std::string tess_observation_id;
     std::string obsid;
     int point_count;
-    std::vector<LightCurvePointResponse> points;
+    std::vector<Nyx::Domain::LightCurvePoint> points;
+  };
+
+  struct LightCurveJsonResponse {
+    std::string tess_observation_id;
+    std::string obsid;
+    int point_count;
+    std::string points_json;
   };
 } // namespace Nyx::Application::Target

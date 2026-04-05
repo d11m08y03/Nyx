@@ -16,6 +16,17 @@ namespace Nyx::Infrastructure::Persistence {
         -> Nyx::Core::Result<
           std::optional<Nyx::Domain::TessObservation>
         > override;
+      auto find_existing_obsids(
+        const std::vector<std::string>& obsids
+      ) -> Nyx::Core::Result<
+        std::unordered_set<std::string>
+      > override;
+      auto bulk_create(
+        const std::vector<Nyx::Domain::TessObservation>&
+          observations
+      ) -> Nyx::Core::Result<
+        std::vector<Nyx::Domain::TessObservation>
+      > override;
       auto find_by_id(const std::string& id)
         -> Nyx::Core::Result<
           std::optional<Nyx::Domain::TessObservation>

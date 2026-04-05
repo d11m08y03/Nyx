@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace Nyx::Domain {
@@ -23,6 +24,16 @@ namespace Nyx::Domain {
       virtual auto find_by_obsid(
         const std::string& obsid
       ) -> Nyx::Core::Result<std::optional<TessObservation>> = 0;
+
+      virtual auto find_existing_obsids(
+        const std::vector<std::string>& obsids
+      ) -> Nyx::Core::Result<
+        std::unordered_set<std::string>
+      > = 0;
+
+      virtual auto bulk_create(
+        const std::vector<TessObservation>& observations
+      ) -> Nyx::Core::Result<std::vector<TessObservation>> = 0;
 
       virtual auto find_by_id(
         const std::string& id

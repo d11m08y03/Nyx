@@ -58,6 +58,12 @@ namespace Nyx::Application::Target {
         std::shared_ptr<spdlog::logger> logger
       ) -> Nyx::Core::Result<LightCurveResponse>;
 
+      auto get_light_curve_json(
+        const std::string& observation_id,
+        bool quality_filter,
+        std::shared_ptr<spdlog::logger> logger
+      ) -> Nyx::Core::Result<LightCurveJsonResponse>;
+
     private:
       auto build_observation_responses(
         const std::string& target_id,

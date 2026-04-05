@@ -2,6 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <spdlog/spdlog.h>
+#include <sstream>
 
 namespace Nyx::Infrastructure::Persistence {
   static auto row_to_tess_observation(
@@ -121,6 +122,130 @@ namespace Nyx::Infrastructure::Persistence {
       );
     }
   }
+  auto PostgresTessObservationRepository::find_existing_obsids(
+    const std::vector<std::string>& obsids
+  ) -> Nyx::Core::Result<
+    std::unordered_set<std::string>
+  > {
+    if (obsids.empty()) return std::unordered_set<std::string>{};
+
+    try {
+      auto db = drogon::app().getDbClient();
+
+      auto sql = std::ostringstream{};
+      sql << "SELECT obsid FROM tess_observations "
+          << "WHERE obsid = ANY(ARRAY[";
+      for (auto i = size_t{0}; i < obsids.size(); ++i) {
+        if (i > 0) sql << ',';
+        sql << '$' << (i + 1);
+      }
+      sql << "]::text[])";
+
+      auto query = sql.str();
+      auto binder = *db << query;
+      for (const auto& obsid : obsids) {
+        binder << obsid;
+      }
+
+      binder << drogon::orm::Mode::Blocking;
+      auto result = std::optional<drogon::orm::Result>{};
+      binder >> [&result](const drogon::orm::Result& r) {
+        result = r;
+      };
+      binder.exec();
+
+      auto existing = std::unordered_set<std::string>{};
+      for (const auto& row : *result) {
+        existing.insert(row["obsid"].as<std::string>());
+      }
+      return existing;
+    } catch (const drogon::orm::DrogonDbException& exception) {
+      spdlog::error(
+        "Database error finding existing obsids: {}",
+        exception.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal("Database error")
+      );
+    }
+  }
+
+  auto PostgresTessObservationRepository::bulk_create(
+    const std::vector<Nyx::Domain::TessObservation>& observations
+  ) -> Nyx::Core::Result<
+    std::vector<Nyx::Domain::TessObservation>
+  > {
+    if (observations.empty()) {
+      return std::vector<Nyx::Domain::TessObservation>{};
+    }
+
+    try {
+      auto db = drogon::app().getDbClient();
+      constexpr auto params_per_row = 7;
+
+      auto sql = std::ostringstream{};
+      sql << "INSERT INTO tess_observations "
+          << "(id, target_id, obsid, cadence_seconds, "
+          << "start_time, end_time, data_uri) VALUES ";
+
+      for (auto i = size_t{0}; i < observations.size();
+        ++i) {
+        if (i > 0) sql << ", ";
+        auto offset =
+          static_cast<int>(i) * params_per_row;
+        sql << "($" << (offset + 1)
+            << ", $" << (offset + 2)
+            << ", $" << (offset + 3)
+            << ", $" << (offset + 4)
+            << ", $" << (offset + 5)
+            << ", $" << (offset + 6)
+            << ", NULLIF($" << (offset + 7) << ", ''))";
+      }
+
+      sql << " RETURNING id, target_id, obsid, "
+          << "cadence_seconds, start_time, end_time, "
+          << "data_uri";
+
+      auto query = sql.str();
+      auto binder = *db << query;
+
+      for (const auto& obs : observations) {
+        binder << obs.id;
+        binder << obs.target_id;
+        binder << obs.obsid;
+        binder << obs.cadence_seconds;
+        binder << obs.start_time;
+        binder << obs.end_time;
+        binder << obs.data_uri.value_or("");
+      }
+
+      binder << drogon::orm::Mode::Blocking;
+      auto result = std::optional<drogon::orm::Result>{};
+      binder >> [&result](const drogon::orm::Result& r) {
+        result = r;
+      };
+      binder.exec();
+
+      auto created =
+        std::vector<Nyx::Domain::TessObservation>{};
+      created.reserve(result->size());
+      for (const auto& row : *result) {
+        created.push_back(row_to_tess_observation(row));
+      }
+      return created;
+    } catch (const drogon::orm::DrogonDbException& exception) {
+      spdlog::error(
+        "Database error bulk creating TESS observations: {}",
+        exception.base().what()
+      );
+      return std::unexpected(
+        Nyx::Core::AppError::internal(
+          "Failed to bulk create TESS observations"
+        )
+      );
+    }
+  }
+
   auto PostgresTessObservationRepository::find_by_id(
     const std::string& id
   ) -> Nyx::Core::Result<

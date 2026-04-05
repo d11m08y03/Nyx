@@ -18,6 +18,11 @@ namespace Nyx::Infrastructure::Persistence {
         std::vector<Nyx::Domain::LightCurvePoint>
       > override;
 
+      auto find_by_observation_id_as_json(
+        const std::string& observation_id,
+        bool quality_filter
+      ) -> Nyx::Core::Result<std::string> override;
+
       auto count_by_observation_id(
         const std::string& observation_id
       ) -> Nyx::Core::Result<int> override;

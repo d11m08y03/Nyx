@@ -62,6 +62,17 @@ namespace Nyx::Application::Target::Tests {
         (const std::string& obsid), (override)
       );
       MOCK_METHOD(
+        (Nyx::Core::Result<std::unordered_set<std::string>>),
+        find_existing_obsids,
+        (const std::vector<std::string>& obsids), (override)
+      );
+      MOCK_METHOD(
+        (Nyx::Core::Result<std::vector<Nyx::Domain::TessObservation>>),
+        bulk_create,
+        (const std::vector<Nyx::Domain::TessObservation>& observations),
+        (override)
+      );
+      MOCK_METHOD(
         (Nyx::Core::Result<std::optional<Nyx::Domain::TessObservation>>),
         find_by_id,
         (const std::string& id), (override)
@@ -97,6 +108,13 @@ namespace Nyx::Application::Target::Tests {
       MOCK_METHOD(
         Nyx::Core::Result<int>, count_by_observation_id,
         (const std::string& observation_id), (override)
+      );
+      MOCK_METHOD(
+        Nyx::Core::Result<std::string>,
+        find_by_observation_id_as_json,
+        (const std::string& observation_id,
+         bool quality_filter),
+        (override)
       );
       MOCK_METHOD(
         Nyx::Core::Result<void>, delete_by_observation_id,
@@ -198,17 +216,20 @@ namespace Nyx::Application::Target::Tests {
     EXPECT_CALL(
       *this->mast_client, search_tess_timeseries(84.291, -80.469, 0.005)
     ).WillOnce(::testing::Return(mast_observations));
-    EXPECT_CALL(*this->tess_obs_repo, find_by_obsid("obs-1"))
+    EXPECT_CALL(*this->tess_obs_repo, find_existing_obsids(::testing::_))
       .WillOnce(::testing::Return(
-        std::optional<Nyx::Domain::TessObservation>(std::nullopt)
+        std::unordered_set<std::string>{}
       ));
-    EXPECT_CALL(*this->tess_obs_repo, find_by_obsid("obs-2"))
+    EXPECT_CALL(*this->tess_obs_repo, bulk_create(::testing::_))
       .WillOnce(::testing::Return(
-        std::optional<Nyx::Domain::TessObservation>(std::nullopt)
+        std::vector<Nyx::Domain::TessObservation>{
+          created_tess_1, created_tess_2
+        }
       ));
-    EXPECT_CALL(*this->tess_obs_repo, create(::testing::_))
-      .WillOnce(::testing::Return(created_tess_1))
-      .WillOnce(::testing::Return(created_tess_2));
+    EXPECT_CALL(*this->tess_obs_repo, find_by_target_id("t-1"))
+      .WillOnce(::testing::Return(
+        std::vector<Nyx::Domain::TessObservation>{}
+      ));
 
     auto result = this->service->resolve_target(request, this->logger);
 
@@ -597,23 +618,25 @@ namespace Nyx::Application::Target::Tests {
     EXPECT_CALL(
       *this->mast_client, search_tess_timeseries(84.291, -80.469, 0.005)
     ).WillOnce(::testing::Return(mast_observations));
-    EXPECT_CALL(*this->tess_obs_repo, find_by_obsid("obs-existing"))
+    EXPECT_CALL(*this->tess_obs_repo, find_existing_obsids(::testing::_))
       .WillOnce(::testing::Return(
-        std::optional<Nyx::Domain::TessObservation>(already_stored)
+        std::unordered_set<std::string>{"obs-existing"}
       ));
-    EXPECT_CALL(*this->tess_obs_repo, find_by_obsid("obs-new"))
+    EXPECT_CALL(*this->tess_obs_repo, bulk_create(::testing::_))
       .WillOnce(::testing::Return(
-        std::optional<Nyx::Domain::TessObservation>(std::nullopt)
+        std::vector<Nyx::Domain::TessObservation>{created_new}
       ));
-    EXPECT_CALL(*this->tess_obs_repo, create(::testing::_))
-      .WillOnce(::testing::Return(created_new));
+    EXPECT_CALL(*this->tess_obs_repo, find_by_target_id("t-1"))
+      .WillOnce(::testing::Return(
+        std::vector<Nyx::Domain::TessObservation>{already_stored}
+      ));
 
     auto result = this->service->resolve_target(request, this->logger);
 
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->tess_observations.size(), 2);
-    EXPECT_EQ(result->tess_observations[0].id, "to-existing");
-    EXPECT_EQ(result->tess_observations[1].id, "to-new");
+    EXPECT_EQ(result->tess_observations[0].id, "to-new");
+    EXPECT_EQ(result->tess_observations[1].id, "to-existing");
   }
 
   TEST_F(TargetServiceTest, ResolveDifferentNamesSameTarget) {
@@ -669,7 +692,7 @@ namespace Nyx::Application::Target::Tests {
       {.data_uri = "mast:TESS/product/lc.fits",
        .description = "Light curves",
        .product_type = "SCIENCE",
-       .filename = "tess-s0001-obs-1-lc.fits"},
+       .filename = "tess-s0001-obs-1-s_lc.fits"},
     };
 
     auto updated_observation = Nyx::Domain::TessObservation{
