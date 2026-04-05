@@ -9,6 +9,7 @@ set(TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/application/profile/ProfileService.cpp
     ${CMAKE_SOURCE_DIR}/src/application/equipment/EquipmentService.cpp
     ${CMAKE_SOURCE_DIR}/src/application/location/LocationService.cpp
+    ${CMAKE_SOURCE_DIR}/src/application/target/TargetService.cpp
 )
 
 add_executable(nyx-tests ${TEST_SOURCES} ${TESTABLE_SOURCES})

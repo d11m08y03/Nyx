@@ -1,0 +1,21 @@
+info:
+  name: Resolve
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/targets/resolve"
+  body:
+    type: json
+    data: |-
+      {
+        "target_name": "Pi Mensae"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

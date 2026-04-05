@@ -1,0 +1,250 @@
+#include "infrastructure/nasa/MastClient.hpp"
+
+#include <drogon/HttpClient.h>
+#include <drogon/utils/Utilities.h>
+#include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
+
+namespace Nyx::Infrastructure::Nasa {
+  MastClient::MastClient(std::string base_url)
+    : base_url(std::move(base_url)) {
+    spdlog::debug("MastClient initialized with base_url={}", this->base_url);
+  }
+
+  auto MastClient::invoke_mast_service(
+    const std::string& request_json
+  ) -> Nyx::Core::Result<std::string> {
+    try {
+      auto client = drogon::HttpClient::newHttpClient(
+        "https://mast.stsci.edu"
+      );
+      client->setUserAgent("Nyx/1.0");
+
+      auto path = this->base_url + "/invoke";
+
+      auto request = drogon::HttpRequest::newHttpRequest();
+      request->setMethod(drogon::Post);
+      request->setPath(path);
+      request->setContentTypeCode(drogon::CT_APPLICATION_X_FORM);
+      auto encoded_body = "request="
+        + drogon::utils::urlEncodeComponent(request_json);
+      request->setBody(encoded_body);
+
+      spdlog::debug("MAST API request: POST {}", path);
+
+      auto [result, response] = client->sendRequest(request, 60.0);
+
+      if (result != drogon::ReqResult::Ok) {
+        spdlog::error("MAST API request failed: network error");
+        return std::unexpected(Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST API request failed", {}
+        });
+      }
+
+      auto body = std::string(response->body());
+
+      spdlog::debug(
+        "MAST API response: status={}, body={}",
+        static_cast<int>(response->getStatusCode()), body
+      );
+
+      if (response->getStatusCode() != drogon::k200OK) {
+        spdlog::error(
+          "MAST API returned status {}",
+          static_cast<int>(response->getStatusCode())
+        );
+        return std::unexpected(Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST API returned non-200 status", {}
+        });
+      }
+
+      return body;
+    } catch (const std::exception& exception) {
+      spdlog::error("MAST API exception: {}", exception.what());
+      return std::unexpected(Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::ExternalServiceError,
+        "MAST API request failed", {}
+      });
+    }
+  }
+
+  auto MastClient::resolve_target(
+    const std::string& name
+  ) -> Nyx::Core::Result<Nyx::Application::Target::ResolvedTarget> {
+    spdlog::debug("Resolving target name='{}'", name);
+
+    auto request_payload = nlohmann::json{
+      {"service", "Mast.Name.Lookup"},
+      {"params", {{"input", name}, {"format", "json"}}}
+    };
+
+    auto body_result = this->invoke_mast_service(request_payload.dump());
+    if (!body_result.has_value()) {
+      return std::unexpected(body_result.error());
+    }
+
+    try {
+      auto response_json = nlohmann::json::parse(body_result.value());
+
+      auto resolved = response_json.value("resolvedCoordinate",
+        nlohmann::json::array()
+      );
+
+      if (resolved.empty()) {
+        spdlog::warn("Target '{}' could not be resolved", name);
+        return std::unexpected(
+          Nyx::Core::AppError::validation("Target could not be resolved")
+        );
+      }
+
+      auto first = resolved[0];
+
+      auto target = Nyx::Application::Target::ResolvedTarget{
+        .canonical_name = first.value("canonicalName", ""),
+        .target_type = first.contains("objectType")
+          ? std::optional<std::string>(first["objectType"].get<std::string>())
+          : std::nullopt,
+        .right_ascension = first.contains("ra")
+          ? std::optional<double>(first["ra"].get<double>())
+          : std::nullopt,
+        .declination = first.contains("decl")
+          ? std::optional<double>(first["decl"].get<double>())
+          : std::nullopt,
+      };
+
+      spdlog::info(
+        "Resolved target '{}' -> canonical='{}', ra={}, dec={}",
+        name, target.canonical_name,
+        target.right_ascension.value_or(0.0),
+        target.declination.value_or(0.0)
+      );
+
+      return target;
+    } catch (const nlohmann::json::exception& exception) {
+      spdlog::error(
+        "Failed to parse MAST name resolution response: {}",
+        exception.what()
+      );
+      return std::unexpected(Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::ExternalServiceError,
+        "Failed to parse MAST response", {}
+      });
+    }
+  }
+
+  auto MastClient::search_tess_timeseries(
+    double ra, double dec, double radius
+  ) -> Nyx::Core::Result<
+    std::vector<Nyx::Application::Target::MastObservation>
+  > {
+    spdlog::debug(
+      "Searching TESS timeseries at ra={}, dec={}, radius={}",
+      ra, dec, radius
+    );
+
+    auto position = std::to_string(ra) + ", "
+      + std::to_string(dec) + ", " + std::to_string(radius);
+
+    auto request_payload = nlohmann::json{
+      {"service", "Mast.Caom.Filtered.Position"},
+      {"params", {
+        {"columns", "obsid,t_exptime,t_min,t_max"},
+        {"filters", nlohmann::json::array({
+          {{"paramName", "obs_collection"}, {"values", {"TESS"}}},
+          {{"paramName", "dataproduct_type"}, {"values", {"timeseries"}}}
+        })},
+        {"position", position},
+        {"format", "json"}
+      }}
+    };
+
+    auto body_result = this->invoke_mast_service(request_payload.dump());
+    if (!body_result.has_value()) {
+      return std::unexpected(body_result.error());
+    }
+
+    try {
+      auto response_json = nlohmann::json::parse(body_result.value());
+
+      auto tables = response_json.value("Tables", nlohmann::json::array());
+      if (tables.empty()) {
+        spdlog::info("No TESS observations found (no tables)");
+        return std::vector<Nyx::Application::Target::MastObservation>{};
+      }
+
+      auto table = tables[0];
+      auto fields = table.value("Fields", nlohmann::json::array());
+      auto rows = table.value("Rows", nlohmann::json::array());
+
+      auto obsid_index = -1;
+      auto exptime_index = -1;
+      auto tmin_index = -1;
+      auto tmax_index = -1;
+
+      for (auto i = 0; i < static_cast<int>(fields.size()); ++i) {
+        auto field_name = fields[i].value("name", "");
+        if (field_name == "obsid") obsid_index = i;
+        else if (field_name == "t_exptime") exptime_index = i;
+        else if (field_name == "t_min") tmin_index = i;
+        else if (field_name == "t_max") tmax_index = i;
+      }
+
+      if (obsid_index < 0 || exptime_index < 0
+        || tmin_index < 0 || tmax_index < 0) {
+        if (rows.empty()) {
+          spdlog::info("No TESS observations found");
+          return std::vector<Nyx::Application::Target::MastObservation>{};
+        }
+        spdlog::error("MAST response missing expected columns");
+        return std::unexpected(Nyx::Core::AppError{
+          Nyx::Core::ErrorCode::ExternalServiceError,
+          "MAST response missing expected columns", {}
+        });
+      }
+
+      auto observations =
+        std::vector<Nyx::Application::Target::MastObservation>{};
+
+      for (const auto& row : rows) {
+        auto obsid_value = row[obsid_index];
+        auto exptime_value = row[exptime_index];
+        auto tmin_value = row[tmin_index];
+        auto tmax_value = row[tmax_index];
+
+        auto obsid = obsid_value.is_string()
+          ? obsid_value.get<std::string>()
+          : std::to_string(obsid_value.get<int64_t>());
+
+        auto cadence = static_cast<int>(
+          exptime_value.get<double>()
+        );
+
+        observations.push_back(
+          Nyx::Application::Target::MastObservation{
+            .obsid = obsid,
+            .cadence_seconds = cadence,
+            .start_time = tmin_value.get<double>(),
+            .end_time = tmax_value.get<double>(),
+          }
+        );
+      }
+
+      spdlog::info(
+        "Found {} TESS observations", observations.size()
+      );
+
+      return observations;
+    } catch (const nlohmann::json::exception& exception) {
+      spdlog::error(
+        "Failed to parse MAST TESS search response: {}",
+        exception.what()
+      );
+      return std::unexpected(Nyx::Core::AppError{
+        Nyx::Core::ErrorCode::ExternalServiceError,
+        "Failed to parse MAST response", {}
+      });
+    }
+  }
+} // namespace Nyx::Infrastructure::Nasa

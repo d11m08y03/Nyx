@@ -35,8 +35,7 @@ namespace Nyx::Infrastructure::Config {
       )));
     this->level = optional_env("LOG_LEVEL", "debug");
     this->mast_base_url = optional_env(
-      "NASA_MAST_BASE_URL",
-      "https://mast.stsci.edu/api/v0.1"
+      "NASA_MAST_BASE_URL", "/api/v0"
     );
     this->exoplanet_archive_base_url = optional_env(
       "NASA_EXOPLANET_ARCHIVE_BASE_URL",
