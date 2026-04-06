@@ -167,7 +167,7 @@ src/
         +-- CsrfFilter
 ```
 
-The core/ directory is separate from the domain/ directory in order to represent the utilities that are shared between all layers of the application. The AppError.hpp header file within the core/error/ directory defines a Result<T> type alias for std::expected<T, AppError> @cppreference2024, an ErrorCode enumeration that contains 13 error codes that map to HTTP status codes between 400 and 500, and a variety of static factory methods for creating errors of each type, such as AppError::validation(), AppError::not_found(), and AppError::internal().
+The core/ directory is separate from the domain/ directory in order to represent the utilities that are shared between all layers of the application. The AppError.hpp header file within the core/error/ directory defines a `Result<T>` type alias for `std::expected<T, AppError>` @cppreference2024, an ErrorCode enumeration that contains 13 error codes that map to HTTP status codes between 400 and 500, and a variety of static factory methods for creating errors of each type, such as AppError::validation(), AppError::not_found(), and AppError::internal().
 
 == Database Schema Design <database_schema>
 
@@ -501,14 +501,14 @@ The decision to use PostgreSQL @postgresql2024 over time series databases (Times
 
 All endpoints are versioned under `/api/v1`, following Fielding's REST architectural style @fielding2000. Resource names use plural nouns with hyphens for multi-word names (e.g. `/observation-sessions`, `/tess-observations`). HTTP methods map to operations: `GET` for retrieval, `POST` for creation and actions, `PUT` for full replacement, `DELETE` for removal. Actions that do not fit the CRUD model use `POST` on a sub-resource (e.g. `POST /tess-observations/:id/discover-products`).
 
-@api_endpoints_full lists all 28 endpoints.
+@api_auth_endpoints, @api_data_endpoints, and @api_resource_endpoints list all endpoints across seven domains. All routes are prefixed with `/api/v1`. "JWT" indicates the `JwtAuthFilter` is applied; "CSRF" indicates the `CsrfFilter` is additionally applied; "Cookie" indicates the refresh token is read from an HttpOnly cookie.
 
 #figure(
   table(
-    columns: (auto, auto, auto, auto),
+    columns: (58pt, 1.2fr, 68pt, 1fr),
     align: (left, left, left, left),
     stroke: 0.5pt,
-    inset: 5pt,
+    inset: 8pt,
     table.header([*Method*], [*Route*], [*Auth*], [*Description*]),
     table.cell(colspan: 4, fill: luma(230), [*Authentication*]),
     [POST], [`/auth/register`], [No], [Register with email and password],
@@ -520,36 +520,67 @@ All endpoints are versioned under `/api/v1`, following Fielding's REST architect
     [POST], [`/auth/google`], [No], [Google OAuth2 code exchange],
     table.cell(colspan: 4, fill: luma(230), [*Profile*]),
     [PUT], [`/users/me/profile`], [JWT], [Complete onboarding profile],
+  ),
+  caption: [Authentication and profile endpoints.],
+) <api_auth_endpoints>
+
+#figure(
+  table(
+    columns: (58pt, 1.2fr, 68pt, 1fr),
+    align: (left, left, left, left),
+    stroke: 0.5pt,
+    inset: 8pt,
+    table.header([*Method*], [*Route*], [*Auth*], [*Description*]),
     table.cell(colspan: 4, fill: luma(230), [*Targets*]),
     [POST], [`/targets/resolve`], [No], [Resolve target name via MAST],
     [GET], [`/targets/:id`], [No], [Get target with observations],
     [GET], [`/targets/:id/tess-observations`], [No], [List TESS observations],
     [GET], [`/targets/:id/light-curve-comparison`], [JWT], [Compare TESS and user data],
+    [GET], [`/targets/:id/export`], [JWT], [Export merged light curve data as CSV],
     table.cell(colspan: 4, fill: luma(230), [*TESS Observations*]),
-    [POST], [`/tess-observations/:id/discover-products`], [No], [Discover FITS products],
-    [POST], [`/tess-observations/:id/fetch-light-curve`], [No], [Download and parse FITS],
-    [GET], [`/tess-observations/:id/light-curve`], [No], [Get stored light curve],
-    table.cell(colspan: 4, fill: luma(230), [*Equipment (CRUD --- each resource)*]),
+    [POST], [`/tess-observations/:id/discover-products`], [No], [Discover FITS data products],
+    [POST], [`/tess-observations/:id/fetch-light-curve`], [No], [Download and parse FITS (SSE progress)],
+    [GET], [`/tess-observations/:id/light-curve`], [No], [Get stored light curve points],
+    table.cell(colspan: 4, fill: luma(230), [*Image Processing*]),
+    [POST], [`/observation-images/:id/photometry`], [JWT+CSRF], [Run aperture photometry on image],
+    [GET], [`/observation-images/:id/photometry`], [JWT], [Get photometry results for image],
+    table.cell(colspan: 4, fill: luma(230), [*Observation Planning*]),
+    [GET], [`/planner/visibility`], [JWT], [Calculate target visibility from location],
+  ),
+  caption: [Data ingestion, processing, and planning endpoints.],
+) <api_data_endpoints>
+
+#figure(
+  table(
+    columns: (58pt, 1.2fr, 68pt, 1fr),
+    align: (left, left, left, left),
+    stroke: 0.5pt,
+    inset: 8pt,
+    table.header([*Method*], [*Route*], [*Auth*], [*Description*]),
+    table.cell(colspan: 4, fill: luma(230), [*Equipment (Telescopes shown; Cameras, Mounts, Filters follow the same pattern)*]),
     [POST], [`/telescopes`], [JWT+CSRF], [Create telescope],
     [GET], [`/telescopes`], [JWT], [List user's telescopes],
-    [GET], [`/telescopes/:id`], [JWT], [Get telescope],
+    [GET], [`/telescopes/:id`], [JWT], [Get telescope by ID],
     [PUT], [`/telescopes/:id`], [JWT+CSRF], [Update telescope],
     [DELETE], [`/telescopes/:id`], [JWT+CSRF], [Delete telescope],
-    table.cell(colspan: 4, fill: luma(230), [_(Cameras, Mounts, Filters follow the same CRUD pattern)_]),
-    table.cell(colspan: 4, fill: luma(230), [*Locations*]),
+    table.cell(colspan: 4, fill: luma(230), [*Observing Locations*]),
     [POST], [`/observing-locations`], [JWT+CSRF], [Create location],
-    [GET], [`/observing-locations`], [JWT], [List locations],
-    [GET/PUT/DELETE], [`/observing-locations/:id`], [JWT/CSRF], [Read/Update/Delete],
-    table.cell(colspan: 4, fill: luma(230), [*Observations*]),
-    [POST], [`/observation-sessions`], [JWT+CSRF], [Create session],
+    [GET], [`/observing-locations`], [JWT], [List user's locations],
+    [GET], [`/observing-locations/:id`], [JWT], [Get location by ID],
+    [PUT], [`/observing-locations/:id`], [JWT+CSRF], [Update location],
+    [DELETE], [`/observing-locations/:id`], [JWT+CSRF], [Delete location],
+    table.cell(colspan: 4, fill: luma(230), [*Observation Sessions and Images*]),
+    [POST], [`/observation-sessions`], [JWT+CSRF], [Create observation session],
     [GET], [`/observation-sessions`], [JWT], [List user's sessions],
-    [GET/PUT/DELETE], [`/observation-sessions/:id`], [JWT/CSRF], [Read/Update/Delete],
-    [POST], [`/observation-sessions/:id/images`], [JWT+CSRF], [Upload image],
+    [GET], [`/observation-sessions/:id`], [JWT], [Get session detail],
+    [PUT], [`/observation-sessions/:id`], [JWT+CSRF], [Update session],
+    [DELETE], [`/observation-sessions/:id`], [JWT+CSRF], [Delete session],
+    [POST], [`/observation-sessions/:id/images`], [JWT+CSRF], [Upload observation image],
+    [GET], [`/observation-sessions/:id/images`], [JWT], [List session images],
     [DELETE], [`/observation-sessions/:sid/images/:iid`], [JWT+CSRF], [Delete image],
-    [POST], [`/observation-sessions/:id/photometry`], [JWT+CSRF], [Run photometry],
   ),
-  caption: [Complete API endpoint listing. "JWT" means the `JwtAuthFilter` is applied. "CSRF" means the `CsrfFilter` is additionally applied. "Cookie" means the refresh token is read from an HttpOnly cookie.],
-) <api_endpoints_full>
+  caption: [Equipment, location, and observation resource endpoints.],
+) <api_resource_endpoints>
 
 === Response Envelope
 

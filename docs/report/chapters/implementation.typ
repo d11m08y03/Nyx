@@ -1,6 +1,6 @@
 = Implementation <implementation>
 
-This chapter presents the implementation of every major subsystem in the Nyx platform. Each section walks through the real code, explains the design rationale behind non-obvious decisions, and links back to the architectural choices described in @design. The chapter is organised bottom-up: foundational infrastructure first (build system, error handling), then the data ingestion pipeline (MAST client, FITS parser, bulk insert), then authentication and security, then the middleware pipeline, then the database access layer and response formatting, and finally the frontend application.
+In this chapter, we present the implementation of each of the subsystems of the Nyx platform. Each subsystem is described in the context of its code and its design decisions, linking to the architectural descriptions presented in @design. The chapter is organised in a bottom-up fashion: starting with the foundational subsystems (the build and error handling systems), followed by the data ingestion subsystem (the MAST and FITS subsystem and the database insert), followed by the authentication subsystem, the middleware subsystem, the database access and response subsystem, and finally the frontend application.
 
 == Build System and Dependencies <build_system>
 
@@ -19,7 +19,7 @@ The backend uses CMake 3.20+ as the build system and vcpkg as the C++ package ma
 }
 ```
 
-Drogon @drogon2024 provides the HTTP server, routing, and ORM layer; the `postgres` feature enables the PostgreSQL client driver. `nlohmann-json` handles JSON serialisation for request/response bodies and API payloads, while `simdjson` is available for high-throughput parsing of large NASA API responses. `spdlog` provides structured logging with nanosecond timestamps. `jwt-cpp` handles JWT creation and verification. `libsodium` supplies Argon2id password hashing, SHA-256 token hashing, CSRF constant-time comparison, and cryptographic random number generation. `cfitsio` is the reference C library for reading FITS files @pence2010. `exiv2` extracts EXIF metadata from observation images. `libraw` decodes DNG raw images from the telescope camera. `curl` is used by the SMTP email sender for sending verification emails over TLS.
+Drogon @drogon2024 provides the HTTP server, routing, and ORM layer. The postgres feature adds support for a PostgreSQL client driver. The nlohmann-json library is used for JSON serialisation of request and response objects. The simdjson library is used for high-throughput parsing of large NASA API responses. spdlog is used for logging messages with nanosecond timestamps. The jwt-cpp library allows the creation and verification of JSON Web Tokens. The libsodium library provides Argon2id hashing for passwords, SHA-256 hashing for tokens and CSRF tokens, and the generation of random numbers. The cfitsio library is a C library for reading FITS files @pence2010. The exiv2 library allows for the extraction of EXIF metadata from observation images. The libraw library decodes DNG raw images taken from the telescope camera. The curl library is used by the SMTP email sender to send verification emails over TLS.
 
 The `CMakeLists.txt` targets C++23 and enforces strict compiler diagnostics:
 
@@ -523,11 +523,11 @@ if (status != 0) {
 }
 ```
 
-The `const_cast<char*>` is necessary because CFITSIO's C API takes a non-const `char*` for the column name parameter, despite not modifying it. The status variable is reset to zero between column lookups because CFITSIO accumulates errors --- a non-zero status from a missing optional column would cause all subsequent calls to fail.
+The const_cast<char*> is used because the C API of CFITSIO expects a non-const char* for the column name parameter, even though it does not modify the parameter. The status variable is reset to zero between calls to get the column name because CFITSIO accumulates errors; returning an error code for the missing of an optional column will cause all following calls to return errors as well.
 
 === Bulk Column Reading into Contiguous Arrays
 
-Rather than reading the FITS table row by row, the parser reads entire columns at once into pre-allocated contiguous `std::vector` arrays. This is both simpler and significantly faster, as CFITSIO can read the entire column in a single I/O operation:
+Rather than reading the columns of the FITS table row by row, the parser reads the entire columns into pre-allocated std::vector arrays. This is simpler and faster than reading the rows one at a time because the CFITSIO library can read an entire column of a FITS file in one read operation:
 
 ```cpp
 auto time_values = std::vector<double>(num_rows);
@@ -548,7 +548,7 @@ if (pdcsap_col > 0) {
 }
 ```
 
-For nullable float columns, a NaN sentinel value is passed as the `nulval` parameter. CFITSIO replaces null entries in the FITS table with this sentinel, which the post-processing loop then checks. The `QUALITY` column uses integer type (`TINT`) and does not require null handling because TESS always populates this field.
+For nullable float columns, the NaN value is passed as the nulval parameter. Any null entries in the table will be replaced with this sentinel value by CFITSIO, which will then be examined in the post-processing loop. The QUALITY column has an integer type (TINT) and does not require null value processing since TESS always populates this field.
 
 === NaN Filtering and Point Construction
 
@@ -591,11 +591,9 @@ return points;
 
 The `id` and `tess_observation_id` fields are set to placeholder values (0 and empty string) because they are assigned by the database during bulk insert. A typical TESS single-sector 2-minute cadence observation contains approximately 18,000--20,000 rows; after NaN filtering, roughly 17,000--18,000 valid points remain.
 
-The memory layout of the intermediate arrays (`std::vector<double>`, `std::vector<float>`) is contiguous, which enables efficient cache-line utilisation during the filtering loop. The `reserve(num_rows)` call on the output vector avoids reallocations during the push-back loop.
-
 == Data Ingestion Pipeline Implementation <pipeline_impl>
 
-The `TargetService` orchestrates the four-stage data ingestion pipeline described in @data_pipeline. It depends on six interfaces, all injected via constructor:
+The `TargetService` manages the four-stage data ingestion pipeline described in @data_pipeline. It depends on six interfaces, all injected via constructor:
 
 ```cpp
 TargetService::TargetService(
@@ -616,11 +614,11 @@ TargetService::TargetService(
   , fits_parser(std::move(fits_parser)) {}
 ```
 
-All dependencies are interfaces (pure abstract classes), which means the service can be tested with mock implementations --- a property exploited extensively in the test suite, as discussed in @architecture.
+All dependencies are interfaces (pure abstract classes), thus the implementation can be easily tested using mock implementations of the interface, a property that is extensively exploited in the test suite (see @architecture).
 
 === Stage 1--2: `resolve_target` --- Name Resolution and Observation Cataloguing <resolve_target_impl>
 
-The `resolve_target` method implements the first two stages of the pipeline. It follows a cache-first strategy: if the target has already been resolved and stored, it returns the cached record with its associated TESS observations rather than querying MAST again:
+The resolve_target method encompasses the first two stages of the pipeline. Should the desired target already be resolved and stored in the object, the method will return the target object with its associated TESS observations - it will not query MAST again:
 
 ```cpp
 auto resolved = this->mast_client->resolve_target(request.target_name);
@@ -657,7 +655,7 @@ if (cached->has_value()) {
 }
 ```
 
-If the target is not cached, a new record is created and the TESS observation search is triggered. The search results are filtered to exclude multi-sector stacked observations (those spanning more than 30 days), which would contain duplicate data from individual sector observations:
+If the target is not cached, a new record is created and the observation search is performed with TESS. The results are filtered to exclude observations that contain more than one sector and are larger than 30 days in length, since these observations contain the same data as the individual sector observations.
 
 ```cpp
 constexpr auto max_single_sector_days = 30.0;
@@ -676,9 +674,9 @@ for (const auto& mast_obs : tess_result.value()) {
 }
 ```
 
-A TESS sector is approximately 27 days @ricker2015, so the 30-day threshold provides a small margin while reliably filtering out multi-sector stacks (which typically span 54+ days).
+A TESS sector is approximately 27 days @ricker2015, so 30-day threshold provides some margin while effectively excluding multi-sector light curves.
 
-To ensure idempotent re-ingestion, the method queries the database for already-stored observation IDs and filters them out before the bulk insert:
+In addition, to ensure that the method is idempotent, its query to the database will retrieve the IDs for the observations that are already stored and exclude them from insertion into the database:
 
 ```cpp
 auto existing_result =
@@ -709,11 +707,12 @@ if (!new_observations.empty()) {
 }
 ```
 
-This `find_existing_obsids` check avoids violating the unique constraint on `obsid` and eliminates redundant database writes when the same target is resolved multiple times.
+This find_existing_obsids check avoids violating the unique constraint on obsid 
+and eliminates futile database writes when the same target is resolved multiple times.
 
 === Stage 3: `discover_products` --- FITS Data Product Selection
 
-The `discover_products` method implements stage 3: querying MAST for data products associated with a specific observation and selecting the light curve FITS file. The method is idempotent --- if the observation already has a `data_uri`, it returns immediately:
+The discover_products method implements stage 3: querying MAST for data products related to the observation, and selecting the light curve file. The method is idempotent; if the observation already has a data_uri, the method exits immediately:
 
 ```cpp
 if (observation.data_uri.has_value()) {
@@ -729,11 +728,11 @@ auto products_result = this->mast_client->get_data_products(
 );
 ```
 
-The FITS file selection criteria (`"Light curves"` + `"SCIENCE"` + `_lc.fits` suffix) are applied to find the SPOC-produced PDCSAP light curve among potentially dozens of data products per observation.
+The criteria for selecting FITS files (“Light curves” + “SCIENCE” + \_lc.fits suffix) is used to find the PDCSAP light curve that was produced by SPOC among potentially dozens of different files that are created from each observation.
 
 === Stage 4: `fetch_light_curve` --- Download, Parse, and Store <fetch_light_curve_impl>
 
-The `fetch_light_curve` method implements the final stage. It includes a caching check: if light curve points already exist in the database for this observation, the method returns metadata without re-downloading:
+The fetch_light_curve method - the final stage - includes a check to see if the light curve points for an observation already exist in the database; if they do, the method will return the metadata without attempting to download the light curves again:
 
 ```cpp
 auto count_result =
@@ -753,7 +752,7 @@ if (count_result.value() > 0) {
 }
 ```
 
-If no cached data exists, the method proceeds through download, parse, and bulk insert:
+If no cached data exists, the method continues with downloading, parsing, and bulk inserting:
 
 ```cpp
 auto download_result = this->mast_client->download_fits(
@@ -776,7 +775,7 @@ auto insert_result =
   );
 ```
 
-The method returns a `LightCurveMetadataResponse` containing the point count, minimum time, and maximum time --- not the full point data, which can be retrieved separately via `get_light_curve`.
+The method returns an object containing the point count, minimum time, and maximum time, not the point data itself, which can be retrieved using the get_light_curve method.
 
 === Performance Timing in `get_light_curve`
 
@@ -799,11 +798,11 @@ logger->debug("Light curve DB fetch took {}ms ({} points)",
   points_result.has_value() ? points_result->size() : 0);
 ```
 
-This timing data is logged at the debug level and is used during development to identify slow queries. For a typical 18,000-point light curve, the fetch completes in 10--50ms depending on database load.
+The timing data is logged at the debug level and used during development to find slow queries. For typical light curves of 18,000 points, the fetch takes around 10-50ms depending on the load of the database.
 
 == Bulk Insert Optimisation <bulk_insert>
 
-Inserting 18,000 light curve points one row at a time would require 18,000 round trips to PostgreSQL @postgresql2024. The `PostgresLightCurvePointRepository` instead uses batched multi-row `INSERT` statements with parameterised placeholders:
+Rather than make 18,000 round trips to PostgreSQL @postgresql2024, the PostgresLightCurvePointRepository uses batched INSERT statements with parameterised placeholders:
 
 ```cpp
 static constexpr auto BATCH_SIZE = 5000;
@@ -879,11 +878,11 @@ auto PostgresLightCurvePointRepository::bulk_create(
 }
 ```
 
-Several design decisions are visible here. First, the batch size of 5,000 was chosen empirically: it stays well within PostgreSQL's parameter limit (65,535) at 30,000 parameters per batch (6 per row times 5,000 rows), while being large enough to amortise the per-statement overhead. Second, nullable float columns use the `CAST(NULLIF($N, '') AS REAL)` pattern: optional values are serialised as empty strings when absent, and `NULLIF` converts the empty string to SQL `NULL` before `CAST` converts the non-empty string to `REAL`. This avoids the complexity of Drogon's `std::optional` parameter binding, which does not reliably work with its SQL binder for bulk operations. Third, the entire operation is wrapped in a transaction, ensuring atomicity: either all points are inserted or none are.
+Several design decisions are visible here. The batch size of 5,000 was chosen empirically to be within the PostgreSQL parameter limit of 65,535 parameters (there are 6 parameters per row times 5,000 rows at 30,000 parameters per batch), while also being sufficiently large to amortise the overhead of each statement. The nullable float columns use the pattern of casting NULLIF to convert empty strings to NULL to indicate missing values; this avoids the complexity of using Drogon’s std::optional type for parameters, which does not appear to work reliably with its SQL binder. Finally, the use of a transaction ensures that either all points are inserted or none are - a crucial property for maintaining data integrity.
 
 === Server-Side JSON Aggregation <json_aggregation>
 
-When the frontend requests light curve data for rendering, the naive approach would be to fetch 18,000 rows from PostgreSQL, map each row to a C++ struct, serialise each struct to JSON, and assemble the JSON array. This involves 18,000 `nlohmann::json` object constructions and a large number of small heap allocations.
+If the frontend requested the data, the naive approach would involve querying the database for the 18,000 rows of data, deserialising each row into a C++ struct, serialising each struct to JSON, and then joining the JSON strings together into a large JSON array. This would involve constructing 18,000 nlohmann::json objects.
 
 The `find_by_observation_id_as_json` method delegates JSON construction entirely to PostgreSQL using `json_agg` and `json_build_object`:
 
@@ -909,7 +908,10 @@ auto result = db->execSqlSync(query, observation_id);
 return result[0][0].as<std::string>();
 ```
 
-PostgreSQL returns a single text value containing the complete JSON array. The C++ layer receives this as a `std::string` and inserts it directly into the response body without parsing or re-serialising it. The controller constructs the response envelope using string concatenation rather than `nlohmann::json` to avoid parsing the large JSON array:
+PostgreSQL returns a single text value containing the complete JSON array.
+The C++ layer receives this as a `std::string` and inserts it directly into the 
+response body without parsing or re-serialising it. The controller constructs the 
+response envelope using string concatenation rather than `nlohmann::json` to avoid parsing the large JSON array:
 
 ```cpp
 auto buf = std::string{};
