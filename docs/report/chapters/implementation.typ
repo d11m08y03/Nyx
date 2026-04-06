@@ -523,7 +523,7 @@ if (status != 0) {
 }
 ```
 
-The const_cast<char*> is used because the C API of CFITSIO expects a non-const char* for the column name parameter, even though it does not modify the parameter. The status variable is reset to zero between calls to get the column name because CFITSIO accumulates errors; returning an error code for the missing of an optional column will cause all following calls to return errors as well.
+The const_cast\<char*> is used because the C API of CFITSIO expects a non-const char* for the column name parameter, even though it does not modify the parameter. The status variable is reset to zero between calls to get the column name because CFITSIO accumulates errors; returning an error code for the missing of an optional column will cause all following calls to return errors as well.
 
 === Bulk Column Reading into Contiguous Arrays
 
@@ -909,9 +909,8 @@ return result[0][0].as<std::string>();
 ```
 
 PostgreSQL returns a single text value containing the complete JSON array.
-The C++ layer receives this as a `std::string` and inserts it directly into the 
-response body without parsing or re-serialising it. The controller constructs the 
-response envelope using string concatenation rather than `nlohmann::json` to avoid parsing the large JSON array:
+The C++ layer receives this as a std::string and inserts it directly into the
+response body without parsing the JSON. The controller constructs the response with string concatenation instead of nlohmann::json to avoid parsing the JSON array returned from the database:
 
 ```cpp
 auto buf = std::string{};
@@ -938,15 +937,15 @@ response->setBody(std::move(buf));
 callback(response);
 ```
 
-The `reserve` call pre-allocates buffer space based on the JSON string size plus a small overhead for the envelope, avoiding reallocations during concatenation. This approach eliminates all C++ JSON serialisation overhead for light curve data and transfers the serialisation work to PostgreSQL's highly optimised JSON functions.
+By reserving space for the JSON string, we avoid reallocations later on when we append to the JSON string. This eliminates the C++ JSON serialisation overhead entirely and shifts the JSON serialisation load to PostgreSQL’s JSON functions.
 
 == Authentication Implementation <auth_impl>
 
-The authentication system implements the architecture described in @auth_design, covering password hashing, JWT token management, refresh token rotation, Google OAuth2 integration, and email verification.
+By reserving space for the JSON string, we avoid reallocations later on when we append to the JSON string. This eliminates the C++ JSON serialisation overhead entirely and shifts the JSON serialisation load to PostgreSQL’s JSON functions.
 
 === Password Hashing: Argon2id via libsodium <password_hashing>
 
-Password hashing uses Argon2id @biryukov2016, accessed through libsodium's high-level `crypto_pwhash_str` API. Argon2id combines the side-channel resistance of Argon2i with the GPU-resistance of Argon2d, making it the recommended choice for password hashing @owasp_password2024:
+Password hashing uses Argon2id @biryukov2016, which is available through the libsodium library. Argon2id is a combination of Argon2i and Argon2d, providing resistance against side-channel attacks and GPU-based brute force attacks @owasp_password2024:
 
 ```cpp
 auto ArgonPasswordHasher::hash(
@@ -980,7 +979,7 @@ auto ArgonPasswordHasher::verify(
 }
 ```
 
-The `OPSLIMIT_MODERATE` and `MEMLIMIT_MODERATE` parameters configure Argon2id to use moderate CPU and memory costs, balancing security against server load. The `crypto_pwhash_str` function produces a self-describing output string that includes the algorithm identifier, salt, parameters, and hash, so no separate salt storage is needed. The `crypto_pwhash_str_verify` function performs constant-time comparison internally, preventing timing attacks.
+The values of the OPSLIMIT_MODERATE and MEMLIMIT_MODERATE parameters determine the cost of Argon2id with moderate CPU and memory requirements. The crypto_pwhash_str function returns a string that contains the algorithm identifier, the salt, the parameters, and the hash values so that the salt does not have to be stored separately. Furthermore, the crypto_pwhash_str_verify function compares the provided password to the hash stored in the database in a way that is protected against timing attacks.
 
 The constructor initialises libsodium, which is a required one-time setup:
 
@@ -993,11 +992,11 @@ ArgonPasswordHasher::ArgonPasswordHasher() {
 }
 ```
 
-This is the only place in the codebase where an exception is thrown rather than returning a `Result`, because libsodium initialisation failure is a fatal startup error --- the application cannot function without cryptographic primitives.
+This is the only place in which we throw an exception rather than returning a Result type; the failure to initialise libsodium is a fatal error, as the library cannot function without libsodium.
 
 === JWT Token Generation and Verification <jwt_impl>
 
-The `JwtTokenService` generates access/refresh token pairs and verifies them using HS256 (HMAC-SHA256) @jones2015. Access tokens carry a 15-minute expiry; refresh tokens carry a 7-day expiry:
+The JwtTokenService will generate tokens and verify them using the HS256 (HMAC-SHA256) algorithm @jones2015. The access tokens will expire in 15 minutes and the refresh tokens will expire in 7 days:
 
 ```cpp
 auto JwtTokenService::generate_token_pair(
@@ -1041,7 +1040,7 @@ auto JwtTokenService::generate_token_pair(
 }
 ```
 
-The `type` claim distinguishes access tokens from refresh tokens at the verification stage. The `fid` (family ID) claim in the refresh token links all tokens in a rotation chain to a common family, enabling family-wide revocation on reuse detection.
+The type claim distinguishes between access and refresh tokens. The fid (family ID) claim in the refresh token allows the server to associate all tokens issued to a user with a given family. If any token from a family is used to access a protected resource, the server can revoke access for all members of that family.
 
 Token verification uses the `jwt-cpp` library's verifier, which checks the signature, issuer, and type:
 
@@ -1071,7 +1070,7 @@ auto JwtTokenService::verify_access_token(
 
 === Token Hashing with SHA-256 <token_hashing>
 
-Refresh tokens are never stored in plaintext in the database. Instead, a SHA-256 hash is computed via libsodium and stored. This way, a database breach does not directly expose valid refresh tokens @bernstein2012:
+Refresh tokens are never stored in plaintext in the database. The SHA-256 hash of the refresh token is stored in the database via libsodium @bernstein2012:
 
 ```cpp
 auto JwtTokenService::hash_token(
@@ -1090,16 +1089,16 @@ auto JwtTokenService::hash_token(
 }
 ```
 
-The hash is stored as a lowercase hexadecimal string. When a refresh token is presented for rotation, the same hashing function is applied and the result is used to look up the stored record.
+The hash is stored as a lowercase hexadecimal string. When the refresh token is presented for rotation, the same hash function is applied to determine the stored record.
 
 === Refresh Token Rotation with Family-Based Reuse Detection <token_rotation>
 
-The `refresh_access_token` method in `AuthService` implements the rotation logic described in @auth_design. When a valid refresh token is presented:
+The refresh_access_token method implements the logic described in @auth_design. When a valid refresh token is presented:
 
-1. The token is verified (signature + expiry).
-2. The SHA-256 hash is computed and used to look up the stored record.
-3. If the stored record is revoked, the entire token family is revoked and an error is returned.
-4. Otherwise, the current token is revoked and a new token pair is issued with the same family ID.
+- The token is verified.
+- The token is hashed with SHA-256 and used to look up the stored record.
+- If the record is revoked, the whole family of tokens is revoked.
+- Otherwise, the current token is revoked and a new token pair is issued with the same family id.
 
 ```cpp
 auto stored_token = stored_token_result->value();
@@ -1131,11 +1130,11 @@ auto new_token_pair =
   );
 ```
 
-The reuse detection works as follows @lodderstedt2020: if an attacker steals a refresh token and uses it, the legitimate user's next refresh attempt will present a token that has already been revoked. This triggers family-wide revocation, invalidating both the attacker's and the user's tokens. The user must re-authenticate, but the attacker loses access.
+The reuse detection works as follows @lodderstedt2020: if an attacker steals a refresh token and uses it to access the resources of a legitimate user, the next time the legitimate user attempts to refresh its token, the token will have already been revoked. This leads to the revocation of all tokens of the family, meaning both the legitimate user and the attacker will no longer have access to the protected resources of the legitimate user. The legitimate user has to log in again, but the attacker loses access.
 
 === Google OAuth2 Integration <google_oauth>
 
-The `GoogleAuthClient` exchanges an authorization code for user information by POSTing to Google's token endpoint @hardt2012:
+The reuse detection works as follows @lodderstedt2020: if an attacker steals a refresh token and uses it to access the resources of a legitimate user, the next time the legitimate user attempts to refresh its token, the token will have already been revoked. This leads to the revocation of all tokens of the family, meaning both the legitimate user and the attacker will no longer have access to the protected resources of the legitimate user. The legitimate user has to log in again, but the attacker loses access.
 
 ```cpp
 auto GoogleAuthClient::exchange_code(
@@ -1179,9 +1178,9 @@ auto GoogleAuthClient::exchange_code(
 }
 ```
 
-The ID token is decoded without signature verification because it was received directly from Google over HTTPS --- verifying the TLS connection is sufficient per the OpenID Connect specification @openid2014. The `sub` claim contains the stable Google user ID.
+The ID token can be decoded without verifying its digital signature, since it was received directly from Google over HTTPS @openid2014. The sub claim within the token contains a stable user identifier issued by Google.
 
-The `AuthService::google_login` method handles three cases for the user lookup:
+The google_login method within the AuthService class considers three separate cases when looking for the user object:
 
 ```cpp
 // Case 1: Existing user found by Google ID
@@ -1215,13 +1214,13 @@ auto new_user = Nyx::Domain::User{
 auto create_result = this->user_repository->create(new_user);
 ```
 
-Google-authenticated users are created with `email_verified = true` (Google has already verified the email), `password_hash = std::nullopt` (no local password), and `auth_provider = "google"`. The conflict case prevents automatic account linking: if a user registered with email/password and later tries Google login with the same email, they receive an explicit error rather than silently merging accounts, which would be a security risk.
+Google-authenticated users have the email_verified field set to true as Google has verified the user’s email address, the password_hash field is left as std::nullopt since Google does not use passwords, and the auth_provider field is set to "google". In the case of a conflict between a user that has created an account with email and password authentication with another account that uses the same email address and Google authentication, the system will return an error message to prevent Google from automatically creating a link between the two accounts for security purposes.
 
 === Email Verification Flow <email_verification>
 
-When a user registers with email/password, the `AuthService` generates a verification token, hashes it with SHA-256, stores the hash with a 24-hour expiry in the `verification_tokens` table, and sends the raw token to the user's email. The verification endpoint looks up the token by hash, checks expiry, marks it as used, and sets `email_verified = true` on the user record.
+When a user registers, the AuthService will generate a verification token for the user. The token will be hashed with SHA-256, stored in the database with a 24 hour expiry, and sent to the user’s email. When the user clicks the verification link, that verification token will be looked up by its hash, validated against the expiry date, marked as used in the database, and the user’s record will be updated to include the email_verified field as true.
 
-The email sending infrastructure uses a strategy pattern. `IEmailSender` is the interface, with two implementations selected at startup based on configuration:
+The system uses a strategy pattern to define the methods of sending the verification email. Each implementation of the IEmailSender interface is selected at startup time based on the application configuration:
 
 ```cpp
 auto email_sender = [&config]()
@@ -1274,7 +1273,7 @@ auto CorrelationIdFilter::doFilter(
 }
 ```
 
-If the client provides an `X-Request-Id` header, it is used as the correlation ID; otherwise a UUID is generated. The logger is stored in Drogon's request attributes, which act as a request-scoped key-value store accessible by all downstream filters and the controller. This avoids thread-local storage, which is unreliable in Drogon's event-loop-based architecture.
+If the X-Request-Id header is given by the client, its value is used as the request ID; otherwise, a new UUID is generated. The logger object is stored inside the request attributes of Drogon. This allows the logger to easily be accessed by all the filters and the controller. This approach avoids the use of thread-local storage, which is not reliable in Drogon.
 
 === RateLimitFilter: Sliding Window Algorithm <rate_limit_filter>
 
@@ -1315,18 +1314,18 @@ auto RateLimitFilter::doFilter(
 }
 ```
 
-The algorithm maintains a `std::deque<time_point>` per IP. On each request, expired timestamps (older than the 1-minute window) are removed from the front. If the remaining count exceeds the limit (10 requests), a 429 response is returned. The `std::mutex` protects against concurrent access from Drogon's thread pool. The window and limit are compile-time constants:
+The algorithm uses a std::deque<time_point> for each IP. Each request removes expired timestamps from the front of the deque. If the size is greater than the limit (10 requests), a 429 response is returned. A mutex protects the deque from concurrent access from Drogon’s thread pool. The size of the time window and the request limit are compile-time constants:
 
 ```cpp
 static constexpr auto max_requests = 10;
 static constexpr auto window = std::chrono::minutes(1);
 ```
 
-This filter is applied only to authentication endpoints (`/api/v1/auth/*`), where brute-force protection is most critical. Data retrieval endpoints do not carry the rate limit filter.
+This filter will be applied only to the authentication endpoints (/api/v1/auth/\*) as brute-force attacks on data retrieval endpoints are not common.
 
 === JwtAuthFilter: Bearer Token Verification <jwt_auth_filter>
 
-The `JwtAuthFilter` extracts the JWT from the `Authorization` header, verifies it, and injects the authenticated user's ID and email into the request attributes:
+This filter will be applied only to the authentication endpoints (/api/v1/auth/\*) as brute-force attacks on data retrieval endpoints are not common.
 
 ```cpp
 auto JwtAuthFilter::doFilter(
@@ -1375,11 +1374,11 @@ auto JwtAuthFilter::doFilter(
 }
 ```
 
-The filter constructs its own `JwtTokenService` in the constructor, ensuring the JWT secret is loaded once at startup. If verification fails, the error (which may be `INVALID_TOKEN` or `TOKEN_EXPIRED`) is passed directly to the failure callback, and the request never reaches the controller.
+The filter also creates its own JwtTokenService in the constructor to load the JWT secret. If the token verification fails, the failure callback will be called with the error thrown (which will be either INVALID_TOKEN or TOKEN_EXPIRED).
 
 === CsrfFilter: Constant-Time Token Comparison <csrf_filter>
 
-The `CsrfFilter` protects state-changing endpoints against cross-site request forgery by comparing the `csrf_token` cookie with the `X-CSRF-Token` header using `sodium_memcmp` @owasp2024:
+The `CsrfFilter` protects state-changing endpoints against CSRF attacks by comparing the `csrf_token` cookie with the `X-CSRF-Token` header using `sodium_memcmp` @owasp2024:
 
 ```cpp
 auto CsrfFilter::doFilter(
@@ -1417,7 +1416,7 @@ auto CsrfFilter::doFilter(
 }
 ```
 
-The `sodium_memcmp` function performs constant-time comparison, preventing timing side-channel attacks that could allow an attacker to determine the CSRF token one byte at a time. GET, HEAD, and OPTIONS requests are exempt because they should be safe (idempotent and side-effect-free).
+The comparison in the sodium_memcmp function ensures that the timing attack cannot reveal the CSRF token one byte at a time. Since GET, HEAD, and OPTIONS requests are considered safe, they are exempt from the CSRF protection.
 
 === Filter Chain Declaration
 
@@ -1448,11 +1447,11 @@ The `{1}` placeholder in the URL pattern is Drogon's syntax for a path parameter
 
 == Image Processing Implementation <image_processing>
 
-The image processing subsystem handles ground-based observation images uploaded by users. It consists of three components, each behind an interface: EXIF metadata extraction, DNG raw image decoding, and aperture photometry.
+The image processing subsystem receives the images that are uploaded by the users. There are three components within this subsystem, each of which is behind its own interface: EXIF data extraction, DNG file decoding, and aperture photometry.
 
 === EXIF Metadata Extraction <exif_impl>
 
-The `IExifParser` interface defines a single method for extracting metadata from observation images:
+The `IExifParser` interface defines a method for extracting metadata from observation images:
 
 ```cpp
 struct ExifData {
@@ -1474,11 +1473,11 @@ class IExifParser {
 };
 ```
 
-The `ExifData` struct uses `std::optional` for every field because no EXIF tag is guaranteed to be present. The `captured_at` field is particularly important: it provides the observation timestamp, which is later converted to Julian Date for comparison with TESS data. The implementation uses the Exiv2 library to read EXIF tags from JPEG, PNG, TIFF, and DNG files.
+Each field of the struct uses std::optional because no tag is guaranteed to be present within an Exif data packet. The data for the captured_at field is especially important as this represents the timestamp of when the image was taken, which is later converted into a Julian Date for comparison with the TESS data. The Exif data is retrieved from JPEG, PNG, TIFF, and DNG image files using the Exiv2 library.
 
 === DNG Raw Image Decoding <dng_impl>
 
-Raw images from the telescope camera (typically in DNG format) must be decoded into a pixel array for photometric analysis. The `IDngDecoder` interface and `DecodedImage` struct model this:
+Raw images from the telescope camera have to be decoded into a pixel array before they can be analyzed. The IDngDecoder interface and the DecodedImage struct model that process:
 
 ```cpp
 struct DecodedImage {
@@ -1496,7 +1495,7 @@ class IDngDecoder {
 };
 ```
 
-The `pixels` vector stores 16-bit unsigned integer values, matching the typical dynamic range of astronomical CCD/CMOS sensors (12--16 bit). The implementation uses LibRaw, which handles Bayer pattern demosaicking and linear scaling. The `channels` field is 1 for monochrome images and 3 for colour images.
+The pixels vector contains 16 bit unsigned integers representing the intensity of the pixels in the image (typical range 12--16 bit for CCD sensors). The actual processing of the raw data is performed by the open-source LibRaw library. The channels field is 1 for monochrome sensors and 3 for colour sensors.
 
 === Aperture Photometry Interface <photometry_impl>
 
@@ -1533,13 +1532,13 @@ class IPhotometryProcessor {
 };
 ```
 
-Source detection identifies bright pixels above a sigma threshold relative to the image background. Aperture measurement sums the pixel values within a circular aperture centred on the source, subtracts the sky background estimated from an annulus, and computes the photon noise error. The `raw_flux` value is converted to `relative_flux` by dividing by a reference star's flux, enabling comparison with normalised TESS light curves.
+Source detection finds pixels in the image that are brighter than a certain sigma threshold of the background brightness of the image. The aperture measurement calculates the flux of the detected sources by summing the pixel values within a circle centred on the detected source, subtracting the estimated background sky brightness within an annulus around the source, and calculating the error on that measurement due to photon noise. The raw flux of each detected source can be converted to a relative flux by dividing by the flux of a reference star, allowing for the comparison of each source’s relative flux to the normalised light curves from the TESS satellite mission.
 
 == Time System Conversion <time_conversion>
 
-Comparing ground-based observations with TESS data requires converting between time systems, as designed in @time_systems. User observations record timestamps in ISO 8601 (UTC); TESS light curves use Barycentric TESS Julian Date (BTJD), which is the Barycentric Julian Date @eastman2010 minus a constant offset of 2,457,000.0 @ricker2015.
+To compare with TESS data, the two time systems must be compared, as described in @time_systems. The observations will be in the ISO 8601 date/time format (UTC time); TESS uses the Barycentric TESS Julian Date (BTJD) which is the Barycentric Julian Date @eastman2010 minus a constant offset of 2,457,000.0 @ricker2015.
 
-The `TimeConversion` utility class provides the conversion:
+The utility class TimeConversion can be used to make this conversion:
 
 ```cpp
 class TimeConversion {
@@ -1595,9 +1594,9 @@ class TimeConversion {
 };
 ```
 
-The algorithm implements the standard Gregorian calendar to Julian Date formula @hessman2004. The January/February adjustment (subtracting 1 from the year and adding 12 to the month for January and February) handles the historical quirk that the Julian calendar year originally began in March.
+The algorithm implements the standard Gregorian calendar to Julian Date formula @hessman2004. The adjustment of January and February months to the following year with the addition of 12 to the month value accounts for the fact that the Julian calendar year began in March.
 
-The `LightCurveComparisonService` uses this conversion to place ground-based observations on the same time axis as TESS data:
+The LightCurveComparisonService uses this calculation to place the ground-based light curves onto the same time scale as the TESS data:
 
 ```cpp
 // Convert TESS BTJD to full JD for comparison
@@ -1611,11 +1610,11 @@ auto jd = Nyx::Core::TimeConversion::iso8601_to_jd(
 );
 ```
 
-The comparison response includes a note acknowledging the timing limitation: ground-based timestamps are converted from UTC to JD without barycentric correction, introducing a maximum error of approximately 8 minutes (the light-travel time across Earth's orbit). This is acceptable for visual overlay comparison but would need correction for precise timing analysis.
+Including a note regarding the limited precision of the dates is made possible by the fact that ground-based observations have their timestamps converted from UTC to Julian dates, but without performing a barycentric correction; the error introduced by this omission is at most ~8 minutes (the light-travel time across the Earth’s orbit). While this is sufficient for comparing the visual appearance of the simulated data with observations of the object in question, it would need to be accounted for in any precise analyses of the object’s timings.
 
 == Database Access Layer <database_access>
 
-All 13 repository implementations follow the same pattern: synchronous Drogon ORM queries with parameterised SQL @postgresql2024, error handling via `try/catch` on `DrogonDbException`, and mapping results to domain entities. This section illustrates the pattern with representative examples.
+All 13 repository implementations follow the same general pattern of executing synchronous Drogon ORM database queries with parameterised SQL @postgresql2024, handling errors with try/catch blocks should a DrogonDbException be thrown, and mapping the database results to domain entities. An example of this general pattern is demonstrated within this section of the documentation.
 
 === Parameterised Queries for SQL Injection Prevention
 
@@ -1656,7 +1655,7 @@ for (const auto& row : result) {
 }
 ```
 
-Columns are accessed by index rather than by name for performance: index-based access avoids the hash lookup that name-based access requires on each row. For a 18,000-row result set, this eliminates 90,000 hash lookups (5 columns per row).
+Columns are accessed by index rather than by name for performance. Accessing a column by index rather than by name eliminates the need for a hash lookup for each row accessed. For a 18,000 row result set with 5 columns, this results in 90,000 hash lookups being eliminated.
 
 === Transaction Usage in Bulk Operations
 
@@ -1669,7 +1668,7 @@ auto transaction = db->newTransaction();
 // Transaction auto-commits on scope exit if no error
 ```
 
-If any batch fails (e.g. due to a constraint violation), the `DrogonDbException` handler catches the error and the transaction is rolled back automatically when the `transaction` shared pointer goes out of scope. This guarantees that partial inserts never occur.
+If any batch fails, the DrogonDbException handler will catch that exception and roll back the transaction automatically when the transaction shared pointer goes out of scope, ensuring that partial inserts never occur.
 
 === Light Curve Point Indexing
 
@@ -1682,7 +1681,7 @@ CREATE INDEX idx_lcp_observation_time
   ON light_curve_points(tess_observation_id, time);
 ```
 
-The single-column index on `tess_observation_id` supports the `count_by_observation_id` query (used for the caching check in `fetch_light_curve`). The composite index on `(tess_observation_id, time)` supports the `find_by_observation_id` query with `ORDER BY time ASC`, allowing the database to satisfy the query entirely from the index @winand2012.
+The single-column index on tess_observation_id is used by the count_by_observation_id query, which is used to determine whether the light curve data for a given target star should be cached in fetch_light_curve. The composite index on (tess_observation_id, time) is used by the find_by_observation_id query with ORDER BY time ASC @winand2012.
 
 == Response Formatting <response_formatting>
 
@@ -1739,9 +1738,9 @@ static auto error(
 }
 ```
 
-The `meta` object always includes the `request_id` (correlation ID) and a server-generated `timestamp`. This ensures that every response can be traced back to the corresponding log entries. The `error` method maps the `AppError`'s `ErrorCode` to both an HTTP status code (for the response status line) and a machine-readable string (for the response body). Field-level validation details are included when present, allowing the frontend to display per-field error messages.
+The meta object always includes the request_id and timestamp fields. The error method translates the AppError’s ErrorCode into an HTTP status code and a string representation of the error that can be understood by the web application. If the error contains field-specific validation messages, those are also included in the response.
 
-Cookie management for refresh tokens and CSRF tokens is also handled by `ResponseHelper`:
+Cookie management for the refresh and CSRF tokens is also handled by the ResponseHelper:
 
 ```cpp
 static auto set_refresh_token_cookie(
@@ -1760,7 +1759,7 @@ static auto set_refresh_token_cookie(
 }
 ```
 
-The refresh token cookie is `HttpOnly` (inaccessible to JavaScript), `Secure` (HTTPS-only in production), `SameSite=Strict` (not sent on cross-origin requests), and scoped to `/api/v1/auth` (only sent on auth endpoints). The CSRF token cookie is intentionally _not_ `HttpOnly` because the frontend JavaScript must read it and include it as a header.
+The refresh token cookie is HttpOnly, Secure, SameSite=Strict, and scoped to the /api/v1/auth endpoints. The CSRF token cookie is not HttpOnly so that the frontend JavaScript can read the cookie and include it as a request header.
 
 == Frontend Implementation <frontend_impl>
 
@@ -1800,15 +1799,15 @@ async function fetchWithAuth(url: string, options: RequestInit) {
 }
 ```
 
-The `credentials: 'include'` setting ensures that the `refresh_token` HttpOnly cookie is sent with requests to the auth endpoints. When a 401 response is received, the client calls `refreshToken()`, which POSTs to `/api/v1/auth/refresh`. If the refresh succeeds, the new access token is stored and the original request is retried transparently. If the refresh fails (e.g. due to token revocation), the user is redirected to the login page.
+The credentials: 'include' setting ensures that the refresh_token cookie is sent with requests to the auth endpoints. On receiving a 401 response from the auth endpoint, the client application will call the refreshToken() method, which will send a POST request to the /api/v1/auth/refresh endpoint. If the request is successful, the request will be retried with the newly retrieved access token. Otherwise, the user will be redirected to the login page.
 
 === Light Curve Viewer <light_curve_viewer>
 
-The light curve viewer renders TESS time-series data using Plotly.js @plotly2024 with WebGL acceleration for smooth interaction with large datasets. The chart displays Barycentric TESS Julian Date (BTJD) on the x-axis and PDCSAP flux @stumpe2012 on the y-axis. Error bars from `PDCSAP_FLUX_ERR` provide visual indication of measurement uncertainty. Users can toggle between SAP and PDCSAP flux, zoom into transit features, and overlay their own ground-based observation points.
+The light curve viewer uses Plotly.js @plotly2024 with WebGL acceleration to render the time series of TESS data. The plot’s x-axis uses Barycentric TESS Julian Date (BTJD) while the y-axis uses PDCSAP flux @stumpe2012. Error bars use the flux error value from the PDCSAP_FLUX_ERR parameter. The light curve plot can be manipulated to switch between SAP and PDCSAP flux, to zoom into the plot, and to plot the observer’s own observations of the target object.
 
 === SSE Progress Updates for Long-Running Operations <sse_progress>
 
-Downloading and parsing a FITS file can take 10--30 seconds. To keep the user informed, the frontend uses the Server-Sent Events (SSE) API @w3c_sse2015 to receive real-time progress updates:
+Downloading and parsing the file can take 10 to 30 seconds to complete. To keep the user informed of the download status, the frontend makes use of the Server-Sent Events (SSE) API @w3c_sse2015 to receive updates from the backend about the download status:
 
 ```typescript
 const source = new EventSource(
@@ -1822,11 +1821,11 @@ source.onmessage = (event) => {
 source.onerror = () => source.close();
 ```
 
-The backend sends events in the standard SSE format (`data: {...}\n\n`), with `percent` (0--100) and `message` (human-readable status) fields. The SSE connection is opened before the fetch operation begins and closed automatically when the operation completes or fails. This provides a responsive user experience without polling.
+The backend sends events in the standard SSE format (data: {...}\n\n), where the response includes fields for the percentage of the operation that has completed so far (between 0 and 100) and a message field with human-readable status information. The SSE connection is opened prior to the fetch operation beginning and is automatically closed when the operation has either completed or failed.
 
 === Light Curve Comparison View <comparison_view>
 
-The comparison endpoint retrieves TESS light curve data alongside the user's ground-based photometry results for the same target, converting all timestamps to Julian Date for a unified time axis. The `LightCurveComparisonService` implements this:
+The endpoint that compares the TESS data to the user provided data retrieves the TESS light curve and the user’s light curve data, both converted to Julian Date values. The LightCurveComparisonService implements this endpoint:
 
 ```cpp
 auto LightCurveComparisonService::get_comparison(
@@ -1891,11 +1890,11 @@ auto LightCurveComparisonService::get_comparison(
 }
 ```
 
-The response includes a `time_system_note` that documents the conversion method and its limitations, ensuring transparency about the approximately 8-minute timing uncertainty in the user observation timestamps due to the omitted barycentric correction.
+The response includes a time_system_note to explain the time conversion and its limitations, specifically the ~8 minute uncertainty in the timestamps of the user’s observations due to the omission of the barycentric time correction.
 
 == Unit Testing <unit_testing>
 
-The test suite uses Google Test @googletest2024 with Google Mock for mock objects. The `TargetServiceTest` class demonstrates the testing approach: all six dependencies of `TargetService` are replaced with mocks:
+The test suite uses Google Test @googletest2024 with Google Mock for mock objects. The TargetServiceTest class demonstrates how each of the six dependencies of the TargetService are replaced with mocks:
 
 ```cpp
 class TargetServiceTest : public ::testing::Test {
@@ -1984,4 +1983,4 @@ TEST_F(TargetServiceTest, ResolveNewTargetWithTessData) {
 }
 ```
 
-This test exercises the full pipeline: name resolution via MAST, cache miss, target creation, TESS observation search, multi-sector filtering, duplicate detection, and bulk insert. By mocking all external dependencies, the test runs in milliseconds without network access or a database connection, validating the orchestration logic in isolation.
+This test exercises the entire pipeline, from name resolution to TESS observation search and insert. All of the external components of this search are mocked in this test, so it completes in milliseconds without accessing the network or the database.
