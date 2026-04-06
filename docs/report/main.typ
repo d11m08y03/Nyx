@@ -20,11 +20,23 @@
 #pagebreak()
 
 #include "chapters/introduction.typ"
+
+#pagebreak()
 #include "chapters/lit_review.typ"
+
+#pagebreak()
 #include "chapters/analysis.typ"
+
+#pagebreak()
 #include "chapters/design.typ"
+
+#pagebreak()
 #include "chapters/implementation.typ"
+
+#pagebreak()
 #include "chapters/testing.typ"
+
+#pagebreak()
 #include "chapters/conclusion.typ"
 
 #pagebreak()

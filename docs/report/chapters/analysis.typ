@@ -608,11 +608,15 @@ At step 6, if the authorisation code is invalid or expired, Google's token endpo
 
 == MoSCoW Prioritisation <moscow>
 
-MoSCoW prioritisation groups requirements into four categories: those that are a Must Have (the omission of which would mean that there is no minimum product), those that are a Should Have (important requirements that can be worked around), those that are a Could Have (desirable features) and those that are a Won’t Have (requirements that will be excluded from the current development iteration but may be included in future iterations). This prioritisation of requirements helps to determine the development iteration in which they will be met.
+MoSCoW prioritisation groups requirements into four categories: 
+those that are a imperative 
+(the omission of which would mean that there is no minimum product), 
+those that are a Significant (important requirements that can be worked around)
+, those that are a Optional (desirable features) and those that are a Deferred (requirements that will be excluded from the current development iteration but may be included in future iterations). This prioritisation of requirements helps to determine the development iteration in which they will be met.
 
-=== Must Have
+=== Imperative
 
-The Must Have requirements form the minimum viable product for the platform. Without these requirements, the platform will not be able to fulfill its purpose of allowing users to ingest and interact with the TESS data.
+The imperative requirements form the minimum viable product for the platform. Without these requirements, the platform will not be able to fulfill its purpose of allowing users to ingest and interact with the TESS data.
 
 - FR1.1 (User registration): Users cannot access the system without an account.
 - FR1.2 (User login): Authentication is required for all data operations.
@@ -639,7 +643,7 @@ The Must Have requirements form the minimum viable product for the platform. Wit
 - NFR9 (Concurrent access safety): System should be able to handle multiple users of the application.
 - NFR10 (Linux compatibility): The application will be deployed onto a Linux server.
 
-=== Should Have
+=== Significant
 
 The Should Have requirements for a project are important, but not necessary. These requirements should be developed after the Must Have requirements are implemented.
 
@@ -658,7 +662,7 @@ The Should Have requirements for a project are important, but not necessary. The
 - NFR11 (RAII for FITS files): Prevents memory leaks when files are no longer needed but less important than other features.
 - NFR12 (Batch size tuning): Optimises the application for fast ingestion of data but the default setting works correctly albeit slowly.
 
-=== Could Have
+=== Optional
 
 Requirements that could help add significant value to the platform are included in the Could Have section. These features are beyond the scope of the must have and should have requirements but may be implemented if time permits after the fulfillment of those requirements.
 
@@ -668,7 +672,7 @@ Requirements that could help add significant value to the platform are included 
 - FR7.3: Performs aperture photometry on the input images; this will require some implementation effort.
 - FR7.4: Estimates the error in the photometry measurements; this feature will add scientific rigour to the application, but can be added incrementally.
 
-=== Won't Have (This Iteration)
+=== Deferred
 
 The following requirements are not being met in this iteration of the project. Though these requirements will be valuable features for the software product, implementing these features will exceed the scope of this project.
 
