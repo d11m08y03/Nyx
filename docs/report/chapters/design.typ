@@ -1,10 +1,10 @@
 = System Design <design>
 
-This chapter presents the complete system design of the Nyx platform. It covers the layered backend architecture and the rationale behind its decomposition, the relational database schema and its indexing strategy, the REST API surface, the multi-stage TESS data ingestion pipeline, the FITS binary table parsing subsystem, the image processing and photometry pipeline for ground-based observations, the astronomical time system conversions, the authentication and authorisation architecture, the HTTP middleware pipeline, the frontend architecture, and the trade-offs that shaped each decision.
+This chapter presents the complete system design of Nyx. Nyx’s backend system architecture is described in this chapter, as are the database schema and indexing strategy, the REST API, the TESS data ingestion system, the system for parsing FITS files, the system for processing and performing photometry on ground-based images, the time system converters, the authentication and authorisation system, the HTTP middleware system, the frontend system architecture, and the trade-offs that were made in the design of each of these systems.
 
 == System Architecture <architecture>
 
-The backend follows a clean architecture pattern @martin2017 organised into four concentric layers. Each layer has a single, well-defined responsibility, and dependencies point strictly inward: outer layers may depend on inner layers, but inner layers never reference outer ones. This constraint is the Dependency Inversion Principle @martin2000 applied at the package level, and it yields three practical benefits. First, the domain and application layers are entirely free of framework coupling --- they can be tested with in-memory fakes without starting a database or HTTP server. Second, swapping an infrastructure component (e.g. replacing PostgreSQL with another relational engine, or replacing CFITSIO with a different FITS library) requires changes only in the infrastructure layer; the application and domain layers remain untouched. Third, the compilation firewall created by the interface boundary reduces incremental rebuild times, since modifying an infrastructure implementation does not invalidate the application layer object files.
+The backend follows an architecture established by Martin @martin2017, consisting of four main layers. Each layer has a specific responsibility and only has dependencies upon layers within it; outer layers may depend upon inner layers, but no inner layer has a dependency upon an outer layer. This structure is a means of applying the Dependency Inversion Principle @martin2000 to the software packages. This strategy provides three main benefits to the system. First, the domain and application layers are entirely free of framework-specific code; they can be tested with mock objects instead of the framework’s production objects. Second, any changes to the infrastructure layer require only changes to that specific layer; the other layers are not affected by such changes. Third, the firewall that is established by the interface between the infrastructure and application layers reduces compilation times; changes to the infrastructure do not affect the compilation time of the application layer objects.
 
 @architecture_diagram illustrates the four layers and their dependency directions.
 
@@ -19,76 +19,67 @@ The backend follows a clean architecture pattern @martin2017 organised into four
 
 The domain layer is the innermost ring. It contains two categories of artefact: entity structs and repository interfaces.
 
-Entity structs are plain C++ aggregates that model the core concepts of the system. They carry no behaviour beyond what the language provides for aggregate types (copy, move, aggregate initialisation). The entities defined in this layer are:
+The entity structs are plain C++ aggregates with no behaviour beyond what the language provides for aggregate types. The entities defined in this layer are:
 
-- `Target` --- a resolved astronomical object with a canonical name, sky coordinates (right ascension and declination), and a target type (e.g. "Star", "Exoplanet Host").
-- `TessObservation` --- a single TESS observation sector record with an observation identifier (`obsid`), cadence in seconds, start and end times (Modified Julian Date), and an optional `data_uri` pointing to the FITS light curve file.
-- `LightCurvePoint` --- a single time-series data point with a timestamp (Barycentric TESS Julian Date), optional PDCSAP and SAP flux values, optional PDCSAP flux error, and an integer quality flag.
-- `User` --- an account record with email, optional password hash (nullable for OAuth users), display name, authentication provider, optional Google ID, and email verification status.
-- `RefreshToken` --- a token record with a SHA-256 hash, a family identifier for rotation tracking, a revocation flag, and an expiry timestamp.
-- `VerificationToken` --- an email verification token with a SHA-256 hash, expiry, and optional `used_at` timestamp.
-- `ObservationSession` --- a ground-based observation session linking a user, a target, and the equipment used (telescope, camera, mount, filter, observing location).
-- `ObservationImage` --- an uploaded image with file metadata (path, size, MIME type), EXIF-extracted fields (capture time, camera model, exposure, ISO, GPS coordinates, dimensions), and optional photometry results (target pixel coordinates, raw flux, relative flux, status).
-- `Telescope`, `Camera`, `Mount`, `Filter` --- equipment records owned by a user, each with type-specific attributes (aperture, focal length, sensor type, band, etc.).
-- `ObservingLocation` --- a geographic location with latitude, longitude, and Bortle class.
+- Target: an astronomical object with a name, coordinates, and type (Star, Exoplanet Host)
+- TessObservation: an observation sector from TESS with an observation id (obsid), cadence in seconds, start and end times for the observation (in MJD), and a URI to its light curve file
+- LightCurvePoint: a point in a light curve with a timestamp (in BTJDT), PDCSAP and SAP flux data (optional), PDCSAP flux error (optional), and a quality flag
+- User: an account with an email address, password (optional), display name, authentication provider, Google ID (optional), and a verification status
+- RefreshToken: a token with a SHA-256 hash, a family id, a revocation status, and an expiry date
+- VerificationToken: a token used to verify a user’s email with a SHA-256 hash, an expiry date, and a used timestamp (optional)
+- ObservationSession: an observation of an astronomical object by a user using a given piece of equipment
+- ObservationImage: an image taken during an observation of an astronomical object with information about the image file (path, size, type), image metadata (EXIF data) including date/time taken, camera model, aperture, shutter speed, ISO, GPS coordinates, image dimensions, and photometry results (target pixel coordinates, raw flux, relative flux, status)
+- Telescope, Camera, Mount, Filter: equipment owned by a user, specific attributes to each type of equipment
+- ObservingLocation: a location from which astronomical observations are made with a latitude, longitude, and Bortle class
+- Repository interfaces define the data access contracts that the application layer relies on. Each interface is a pure abstract class with a virtual destructor and one or more pure virtual methods. For example, `ITargetRepository` declares methods `create`, `find_by_id`, `find_by_canonical_name`, and `find_all`. `ITessObservationRepository` declares `bulk_create`, `find_by_target_id`, `find_by_id`, `find_existing_obsids`, and `update_data_uri`. `ILightCurvePointRepository` declares `bulk_create`, `find_by_observation_id`, `find_by_observation_id_as_json`, `count_by_observation_id`, and `delete_by_observation_id`. There are 13 repository interfaces in total, one for each aggregate root or entity that requires persistence.
 
-Repository interfaces define the data access contracts that the application layer relies on. Each interface is a pure abstract class with a virtual destructor and one or more pure virtual methods. For example, `ITargetRepository` declares methods `create`, `find_by_id`, `find_by_canonical_name`, and `find_all`. `ITessObservationRepository` declares `bulk_create`, `find_by_target_id`, `find_by_id`, `find_existing_obsids`, and `update_data_uri`. `ILightCurvePointRepository` declares `bulk_create`, `find_by_observation_id`, `find_by_observation_id_as_json`, `count_by_observation_id`, and `delete_by_observation_id`. There are 13 repository interfaces in total, one for each aggregate root or entity that requires persistence.
-
-The domain layer has zero dependencies on external libraries. It uses only the C++ standard library (`std::string`, `std::optional`, `std::vector`, `std::expected`). This makes it the most stable layer in the system --- it changes only when the core data model changes.
+The domain layer has zero dependencies on external libraries. It only uses the C++ standard library (std::string, std::optional, std::vector, std::expected). This makes it the most stable layer in the system - it will only ever change when the model of the data that we are representing changes.
 
 === Application Layer
 
-The application layer sits immediately outside the domain layer. It contains service classes that implement the system's use cases. Each service orchestrates domain entities and repository interfaces to fulfil a single business capability. The services defined in this layer are:
+The application layer is situated immediately outside of the domain layer. This layer contains service classes that implement the use cases for the system. Each service class in this layer is responsible for fulfilling one use case. The following services are defined in this application layer:
 
-- `TargetService` --- resolves target names via the MAST API, searches for TESS observations, discovers FITS data products, downloads and parses light curves, and retrieves stored light curve data. This is the most complex service, implementing the four-stage data ingestion pipeline described in @data_pipeline.
-- `AuthService` --- handles user registration, login (email/password and Google OAuth2), token refresh with rotation, logout (token revocation), email verification, and verification email resend.
-- `EquipmentService` --- provides CRUD operations for telescopes, cameras, mounts, and filters, all scoped to the authenticated user.
-- `LocationService` --- provides CRUD operations for observing locations, scoped to the authenticated user.
-- `ObservationService` --- manages observation sessions and image uploads, including EXIF metadata extraction, DNG raw image decoding, and aperture photometry.
-- `ProfileService` --- handles user profile completion (setting a display name after OAuth registration).
-- `LightCurveComparisonService` --- retrieves TESS light curve data alongside the user's ground-based photometry results for the same target, converting user observation timestamps to the TESS time system for overlay comparison.
+- TargetService --- resolves target names from the MAST API, finds TESS observations of that target, finds FITS data products of that target, downloads and parses light curves from that target, and retrieves stored light curve data from the database. This service is the most complex of all the services, and implements the four-stage data ingestion pipeline described in @data_pipeline.
+- AuthService --- enables user registration, login via email and password or Google OAuth2, logout, refresh tokens (along with rotation for security), login with verified email addresses, and resending verification emails to users.
+- EquipmentService --- enables creation, retrieval, update, and deletion (CRUD) of telescope, camera, mount, and filter objects for the currently logged in user.
+- LocationService --- enables creation, retrieval, update, and deletion (CRUD) of location objects for the currently logged in user.
+- ObservationService --- enables creation of observation objects and upload of the images taken during that observation. Images are automatically downloaded in raw DNG format, EXIF data is extracted from those raw images, and light curve data is generated via aperture photometry of the raw images.
+- ProfileService --- enables users to complete their profiles after registration via OAuth2.
+- LightCurveComparisonService --- retrieves the TESS light curve data for a target with the user’s own light curve data for that same target, converting the user’s observation times to the TESS time system for direct comparison between the two light curves.
 
-Services depend on interfaces, never on concrete implementations. For example, `TargetService` depends on `IMastClient` (an application-layer interface for the MAST API), `IFitsParser` (an application-layer interface for FITS parsing), `ITargetRepository`, `ITessObservationRepository`, `ILightCurvePointRepository`, and `IUuidGenerator`. All of these are abstract classes. The concrete implementations (`MastClient`, `FitsParser`, `PostgresTargetRepository`, etc.) are provided at application startup via constructor injection.
+All the services depend on interfaces, not on the implementations of those interfaces. For instance, the TargetService depends on interfaces such as IMastClient, IFitsParser, ITargetRepository, TessObservationRepository, LightCurvePointRepository, and IUuidGenerator. Each of these is an abstract class. The concreate implementations of these classes are provided by the application at startup time through constructor injection.
 
-The application layer also defines Data Transfer Objects (DTOs) --- request structs (e.g. `ResolveTargetRequest`, `RegisterRequest`, `LoginRequest`) and response structs (e.g. `TargetResponse`, `TessObservationResponse`, `LightCurveResponse`). These DTOs decouple the API contract from the domain model. A `TargetResponse`, for example, includes a nested `std::vector<TessObservationResponse>` that the domain `Target` entity does not carry, since the entity models only the target itself while the response aggregates related data for the client.
+The application layer also defines Data Transfer Objects (DTOs), which are the structs that represent both the requests that are made to (and received by) the API endpoint (such as ResolveTargetRequest, RegisterRequest, and LoginRequest), and the responses that are returned (such as TargetResponse, TessObservationResponse, and LightCurveResponse). For instance, a TargetResponse object includes a vector of TessObservationResponse objects that are not a part of the domain model represented by a Target entity.
 
 === Infrastructure Layer
 
-The infrastructure layer provides all concrete implementations of the interfaces declared in the domain and application layers. It is the widest ring in terms of external dependencies and the most likely to change when third-party libraries or services evolve. The implementations grouped by concern are:
+The infrastructure layer contains the concret implementations of the interfaces declared in the domain and application layers. This layer has the widest ring of external dependencies, thus having the most potential for change. The implementations are as follows:
 
-*Persistence* --- thirteen PostgreSQL repository classes, one per repository interface. Each uses the Drogon ORM @drogon2024 for database access. Parameterised queries are used exclusively; no user input is ever interpolated into SQL strings. Bulk insert operations (e.g. for light curve points) use dynamically constructed multi-row `INSERT` statements with positional parameters (`$1`, `$2`, ...) to minimise round-trips. A single bulk insert can handle up to 5,000 rows per batch within a database transaction.
-
-*NASA API client* --- `MastClient` implements `IMastClient`. It communicates with the MAST Portal API @stsdci2024 using Drogon's synchronous HTTP client. All MAST API calls use the form-encoded POST convention required by the MAST `/api/v0/invoke` endpoint: the JSON request payload is URL-encoded and sent as the value of a `request` form field with content type `application/x-www-form-urlencoded`. The response is standard JSON.
-
-*FITS parsing* --- `FitsParser` implements `IFitsParser`. It uses the CFITSIO library to read binary FITS files, extracting TIME, PDCSAP_FLUX, PDCSAP_FLUX_ERR, SAP_FLUX, and QUALITY columns from the second HDU (Header Data Unit). Because CFITSIO requires file-based access and cannot parse in-memory buffers, the parser writes the binary data to a temporary file (via `mkstemp`), reads the columns, and cleans up the file with an RAII guard class.
-
-*Security* --- `JwtTokenService` implements `ITokenService` using the jwt-cpp library for HS256 JWT generation and verification. `ArgonPasswordHasher` implements `IPasswordHasher` using libsodium's Argon2id implementation with `MODERATE` parameters @biryukov2016.
-
-*Authentication* --- `GoogleAuthClient` implements `IGoogleAuthClient` for the OAuth2 Authorization Code exchange with Google's token endpoint @hardt2012.
-
-*Email* --- `SmtpEmailSender` and `ConsoleEmailSender` both implement `IEmailSender`. The console variant logs emails to standard output for development environments.
-
-*Imaging* --- `Exiv2ExifParser` implements `IExifParser` using the Exiv2 library for EXIF metadata extraction. `LibrawDngDecoder` implements `IDngDecoder` using the LibRaw library for DNG raw image decoding. `AperturePhotometer` implements `IPhotometryProcessor` for aperture photometry calculations.
-
-*Configuration* --- `EnvironmentConfig` reads all configuration from environment variables (database connection string, JWT secret, server port, thread count, Google OAuth credentials, SMTP settings, log level). No configuration files are used.
-
-*Storage* --- `LocalFileStorage` implements `IFileStorage` for writing uploaded images to the local filesystem.
+- Persistence: There are thirteen repository implementations, one for each interface. Each uses the Drogon ORM to interact with the PostgreSQL database; parameterized queries are used exclusively, and bulk inserts are supported for tables with up to 5,000 rows.
+- NASA API client: The MastClient class implements the IMastClient interface and uses Drogon’s HTTP client to communicate with the NASA MAST Portal API. Form-encoded POST requests are used to call the MAST API; the request body is encoded and placed into the request form field with content type application/x-www-form-urlencoded.
+- FITS parsing: The FitsParser class uses the CFITSIO library to read the TIME, PDCSAP_FLUX, PDCSAP_FLUX_ERR, SAP_FLUX, and QUALITY columns from the binary FITS files. The library does not support reading from in-memory buffers, so the file is written to a temporary file on disk and read in memory.
+- Security: The JwtTokenService class uses the jwt-cpp library to create and validate JWT tokens; Argon2id passwords are hashed using libsodium with the MODERATE security parameter.
+- Authentication: The GoogleAuthClient class uses the Google OAuth2 API to authenticate users via the authorization code grant to obtain the access token from Google’s authorization endpoint.
+- Email: Both the SmtpEmailSender and the ConsoleEmailSender class implement the IEmailSender interface; the ConsoleEmailSender is used during development only.
+- Imaging: The Exiv2ExifParser class uses the Exiv2 library to read EXIF metadata from images; the LibrawDngDecoder class uses the LibRaw library to decode raw DNG images; the AperturePhotometer class performs aperture photometry on images.
+- Configuration: The EnvironmentConfig class obtains all configuration from environment variables; there are no configuration files used by the application.
+- Storage: The LocalFileStorage class stores files on the local filesystem.
 
 === Presentation Layer
 
-The presentation layer is the outermost ring. It handles HTTP request parsing, response formatting, and cross-cutting concerns (authentication, rate limiting, CSRF protection, request tracing). It contains two sub-layers: controllers and middleware.
+The presentation layer is the outermost ring of the system. It receives and processes HTTP requests, and returns HTTP responses from the system. It is divided into two sub-layers: controllers and middleware.
 
-Controllers are Drogon `HttpController` subclasses. Each controller method performs three operations: (1) parse the request body and path parameters, (2) call the appropriate application service method, and (3) format the result into a JSON response using the `ResponseHelper` utility class. Controllers never contain business logic. If a service method returns an error (via `std::unexpected`), the controller passes it directly to `ResponseHelper::error()`, which maps the `ErrorCode` enum to the appropriate HTTP status code and JSON error envelope.
+Controllers are classes that inherit from Drogon’s HttpController class. Each method of a controller does three things: it parses the request body and path parameters, calls a method on the application service class, and returns a response in JSON format. The response is constructed using a class called ResponseHelper. If the service method call encounters an error, the error is passed directly to the ResponseHelper::error() method, which turns the service’s ErrorCode into an HTTP response code and JSON error object.
 
-The `ResponseHelper` class enforces the response envelope contract. Every successful response is wrapped in a `{"data": ..., "meta": {"request_id": "...", "timestamp": "..."}}` structure. Every error response is wrapped in a `{"error": {"code": "...", "message": "...", "details": [...]}, "meta": {...}}` structure. The `meta.request_id` field carries the correlation ID assigned by the `CorrelationIdFilter`, providing end-to-end request traceability.
+The ResponseHelper class is used to construct both successful and error responses. A successful response includes the following structure in the response body: {"data": ..., "meta": {"request_id": "...", "timestamp": "..."}}. An error response includes the following structure in the response body: {"error": {"code": "...", "message": "...", "details": [...]}, "meta": {...}}. The request_id is used to enable request traceability through the entire system, and is assigned by the CorrelationIdFilter middleware.
 
 === Constructor Injection Pattern
 
-All dependencies are wired at application startup using `std::shared_ptr` constructor injection. The `main.cpp` entry point creates the `EnvironmentConfig`, initialises the database connection pool via `DatabaseManager::initialize()`, and starts the Drogon HTTP server. Drogon's controller registration is declarative (via `METHOD_LIST_BEGIN` / `ADD_METHOD_TO` macros), and each controller's constructor resolves its service dependencies by constructing the full dependency graph.
+All the dependencies are wired up at application startup time, when the application starts up via the main function in main.cpp. The Drogon server uses a declarative method system to register its controllers, but each controller’s constructor resolves the dependencies of that controller object by constructing the dependency graph for that object.
 
-For example, `TargetController`'s constructor creates a `TargetService`, which in turn receives a `MastClient`, a `FitsParser`, a `PostgresTargetRepository`, a `PostgresTessObservationRepository`, a `PostgresLightCurvePointRepository`, and a `DrogonUuidGenerator` --- all as `std::shared_ptr` to their respective interface types. This wiring is explicit and compile-time-checked. There is no service locator or runtime dependency injection container.
+For example, the constructor for the TargetController class constructs a TargetService object. The TargetService class constructor obtains the MastClient, FitsParser, PostgresTargetRepository, PostgresTessObservationRepository, PostgresLightCurvePointRepository and DrogonUuidGenerator classes, each as a std::shared_ptr to the appropriate interface type. There is no service locator system within the application, and there is no runtime dependency injection system to construct these objects at runtime.
 
-The use of `std::shared_ptr` rather than `std::unique_ptr` is a deliberate choice. Several services share repository instances (e.g. `TargetService` and `LightCurveComparisonService` both need `ITargetRepository` and `ITessObservationRepository`), and shared ownership simplifies the wiring without introducing lifetime ambiguity.
+The services are implemented using std::shared_ptr rather than std::unique_ptr because some of the services share some of the repository objects. For example, both the TargetService and the LightCurveComparisonService objects require access to the ITargetRepository and ITessObservationRepository interface types, so they both use the same shared instances of those repository classes.
 
 == Directory Structure <directory_structure>
 
@@ -176,11 +167,11 @@ src/
         +-- CsrfFilter
 ```
 
-The `core/` directory is separate from `domain/` because it contains cross-cutting utilities (error types, logging, validation) that are used by all layers. The `core/error/AppError.hpp` header defines the `Result<T>` type alias (`std::expected<T, AppError>` @cppreference2024), the `ErrorCode` enumeration (13 error codes mapping to HTTP status codes 400--500), and factory methods (`AppError::validation()`, `AppError::not_found()`, `AppError::internal()`, etc.) that standardise error construction across the codebase.
+The core/ directory is separate from the domain/ directory in order to represent the utilities that are shared between all layers of the application. The AppError.hpp header file within the core/error/ directory defines a Result<T> type alias for std::expected<T, AppError> @cppreference2024, an ErrorCode enumeration that contains 13 error codes that map to HTTP status codes between 400 and 500, and a variety of static factory methods for creating errors of each type, such as AppError::validation(), AppError::not_found(), and AppError::internal().
 
 == Database Schema Design <database_schema>
 
-The database consists of 18 tables managed by 18 goose migration files @postgresql2024. Tables are grouped into four domains: authentication, targets, equipment, and observations. @erd shows the entity-relationship diagram.
+The database is managed by goose migration files @postgresql2024. Tables are grouped into four domains: authentication, targets, equipment, and observations. @erd shows the entity-relationship diagram.
 
 #figure(
   rect(width: 100%, height: 300pt, stroke: 0.5pt)[
@@ -272,7 +263,7 @@ CREATE TABLE targets (
 );
 ```
 
-The `canonical_name` is the MAST-resolved name (e.g. "HAT-P-7" rather than the user's input "hatp7" or "HAT-P-7b"). The unique constraint ensures that repeated resolution of the same target returns the cached record rather than creating duplicates. Right ascension and declination are stored as DOUBLE PRECISION in degrees, matching the MAST API coordinate system. Both are nullable because name resolution occasionally succeeds without returning coordinates (rare, but the schema must tolerate it).
+The canonical_name is the name as resolved by MAST (e.g. "HAT-P-7" rather than the user input of "hatp7" or "HAT-P-7b"). The unique constraint on this field ensures that each row has a unique name and prevents the insertion of duplicate rows. Each of the ra and dec fields is of type DOUBLE PRECISION and represents the ra and declination of the object in degrees. These fields are nullable in case name resolution is performed but coordinates are not returned (though this case is rare).
 
 *`tess_observations` table:*
 
@@ -294,9 +285,9 @@ CREATE INDEX idx_tess_observations_target_id
   ON tess_observations(target_id);
 ```
 
-The `obsid` column carries a `UNIQUE` constraint. This is the MAST-assigned observation identifier and serves as the natural key for idempotent ingestion: when the pipeline re-runs for a target that already has observations in the database, the service queries `find_existing_obsids()` with the list of obsids returned by MAST and skips any that already exist. This approach avoids `ON CONFLICT` clauses and gives the application full control over what constitutes a "new" observation.
+The obsid column has a UNIQUE constraint. This is the unique identifier assigned to each observation by MAST. When the ingestion service encounters a target with existing observations in the database, the service will call the find_existing_obsids() method with the list of obsids returned from MAST for that target; obsids that are already in the database will be skipped during the ingestion process. This method of identifying existing observations avoids the need for ON CONFLICT clauses in the database and provides full control to the application to identify when new observations have been found.
 
-The `start_time` and `end_time` columns store Modified Julian Dates (MJD) as DOUBLE PRECISION values. MJD was chosen over TIMESTAMPTZ because the MAST API returns observation time bounds as MJD floats, and storing them in the same format avoids lossy conversion. The `data_uri` column is nullable because it is populated in a separate pipeline stage (product discovery) after the observation record is initially created during the observation search stage.
+The start_time and end_time columns contain the observation start and end times in Modified Julian Dates (MJD) as DOUBLE PRECISION values. MJD is used rather than the TIMESTAMPTZ Postgres type because the MAST API returns the start and end times of observations as MJD values, and using this same format in the database avoids any loss of precision during conversion from one format to another. The data_uri column is nullable because it is populated during a separate ingestion pipeline stage (product discovery) that occurs after the observation record is created during the observation search stage.
 
 *`light_curve_points` table:*
 
@@ -318,13 +309,13 @@ CREATE INDEX idx_lcp_observation_time
   ON light_curve_points(tess_observation_id, time);
 ```
 
-This table stores the parsed FITS light curve data. A single TESS observation sector contains approximately 18,000 to 20,000 data points at 2-minute cadence, or approximately 600 to 700 points at 30-minute cadence. For a target observed across 10 sectors, this amounts to roughly 180,000 to 200,000 rows. At scale (hundreds of targets), the table could reach tens of millions of rows.
+Table \ref{tab:light_curve_table} stores the TESS light curve data. Each TESS observation sector contains approximately 18,000 to 20,000 data points at a cadence of 2 minutes, or approximately 600 to 700 points at a cadence of 30 minutes. Thus, each target observed across 10 sectors will contribute to approximately 180,000 to 200,000 rows in the table. At scale across hundreds of TESS targets, therefore, the table could contain tens of millions of rows.
 
-The primary key uses `BIGSERIAL` rather than `UUID` for two reasons. First, the auto-incrementing integer avoids the 16-byte storage overhead of UUID per row, which matters when the table contains millions of rows with narrow columns (the entire row is approximately 40 bytes excluding the UUID overhead). Second, `BIGSERIAL` produces naturally ordered keys that align with B-tree index leaf page ordering, reducing page splits during sequential inserts @winand2012.
+The primary key for the table uses the type BIGSERIAL rather than the type UUID for two reasons. First, the auto-incrementing integer value for the primary key requires less storage than the 16 bytes of a UUID, which is important for a table that will contain millions of rows with very narrow table columns (the row size is approximately 40 bytes for each row, plus the 16 bytes for the UUID); second, the BIGSERIAL type has naturally ordered values that can be utilized by the database’s B-tree indexes in a way that minimizes page splits during insert operations @winand2012.
 
-The `time` column stores Barycentric TESS Julian Date (BTJD) as DOUBLE PRECISION. The `pdcsap_flux`, `pdcsap_flux_err`, and `sap_flux` columns use REAL (4-byte single-precision float) rather than DOUBLE PRECISION because the source FITS data stores these columns as 32-bit floats, and there is no information gain from widening to 64 bits. The `quality` column is an integer bitmask defined by the TESS SPOC pipeline @jenkins2016; a value of zero means no known data quality issues.
+The data type for the time column is DOUBLE PRECISION to represent the Barycentric TESS Julian Date (BTJD) of each measurement. The data types for the columns pdcsap_flux, pdcsap_flux_err, and sap_flux are the type REAL (4-byte single precision floating point) rather than DOUBLE PRECISION (8-byte double precision floating point) because the original FITS files contain those 32-bit floats; there is no benefit to storing twice the size of the original data. The quality column contains an integer value defined by the TESS SPOC mission data processing pipeline @jenkins2016; a value of 0 indicates no known quality issues with the data.
 
-The composite index `idx_lcp_observation_time` on `(tess_observation_id, time)` is the most performance-critical index in the schema. It supports the primary query pattern: retrieve all light curve points for a given observation, ordered by time. Because `tess_observation_id` is the leading column, PostgreSQL can use an index-only scan (if the query selects only indexed columns) or an index scan with a single seek followed by a sequential read of the leaf pages. The `ORDER BY time ASC` clause in the query aligns with the index sort order, so no in-memory sort is required @winand2012.
+The index idx_lcp_observation_time on the combination of the columns tess_observation_id and time is the most critical index within the schema. The index permits fast retrieval of the light curve data for a given observation by utilizing an index-only scan or an index scan with a single seek to the data; since the observations are stored in the index in order of time ascending in the database, there is no need for a sort of the data in memory prior to returning the data @winand2012.
 
 === Equipment Domain
 
@@ -409,7 +400,7 @@ CREATE TABLE filters (
 CREATE INDEX idx_filters_user_id ON filters(user_id);
 ```
 
-All equipment tables share the same structural pattern: UUID primary key, foreign key to `users(id)` with `ON DELETE CASCADE`, a user-assigned name, type-specific attributes, and timestamps. A unique index on `(user_id, name)` is applied to observing locations (and could be extended to equipment tables) to prevent a user from creating two items with the same name.
+All equipment tables have the same fields: a UUID primary key, a foreign key to the users table that cascades deletes, the name the user assigns to the equipment, the attributes specific to that type of equipment, and timestamps. There is a unique index on the user and name fields for observing locations (which could also be given to the equipment tables).
 
 === Observation Domain
 
@@ -436,7 +427,7 @@ CREATE UNIQUE INDEX idx_observing_locations_user_id_name
   ON observing_locations(user_id, name);
 ```
 
-The `bortle_class` column uses SMALLINT (1--9 scale) to record the sky brightness at the location. The unique index on `(user_id, name)` prevents duplicate location names per user, returning a 409 Conflict error at the database level rather than requiring an application-level check.
+The bortle_class column uses a SMALLINT to record the brightness of the sky at that location. The unique index on the location name and user_id prevents users from creating locations with the same name for that particular user, returning a 409 Conflict error at the database level.
 
 *`observation_sessions` table:*
 
@@ -463,7 +454,7 @@ CREATE INDEX idx_observation_sessions_target_id
   ON observation_sessions(target_id);
 ```
 
-The session table links a user, a target, and the complete equipment configuration used for the observation. The `filter_id` column is the only nullable equipment reference, because unfiltered observations are common in amateur astronomy. All other equipment references are `NOT NULL` because a meaningful ground-based observation requires at minimum a telescope, camera, mount, and location.
+The session table links the user, the target, and the equipment configuration used during the observation. The filter_id column is the only one that references other equipment tables and allows for NULL values; observations that did not use a filter are common in amateur astronomy. All of the other equipment references are NOT NULL fields, as there is no such thing as performing a ground-based astronomy observation without at least a telescope, a camera, a mount, and a location.
 
 *`observation_images` table:*
 
@@ -500,11 +491,11 @@ CREATE INDEX idx_observation_images_session_id
   ON observation_images(session_id);
 ```
 
-The image table stores both the file metadata and the EXIF-extracted metadata (first group of nullable columns: `captured_at` through `image_height`) and the photometry results (second group: `target_x` through `photometry_error_message`). The `filename` column stores a UUID-based name generated on upload to avoid filesystem collisions; `original_filename` preserves the name the user uploaded. The `photometry_status` column can be `'pending'`, `'completed'`, or `'failed'`, tracking the state of the asynchronous photometry pipeline. When photometry fails, `photometry_error_message` records the reason.
+This table stores both the file metadata and the EXIF data extracted from the files (the first group of nullable columns: captured_at through image_height) as well as the photometry results for each image (target_x through photometry_error_message). The filename field stores the UUID-based name of the file on the server (generated upon upload); the original_filename field stores the name of the file as uploaded by the user. Finally, the photometry_status field stores one of three values: 'pending', 'completed', or 'failed'. In the case that the photometry for a file failed, the photometry_error_message field would contain the error that prevented successful photometry.
 
 === Why PostgreSQL <why_postgresql>
 
-PostgreSQL @postgresql2024 was chosen over specialised time-series databases (TimescaleDB @timescale2024, InfluxDB) for three reasons. First, the data volume --- tens of millions of light curve points at most --- is well within PostgreSQL's capability when properly indexed. TimescaleDB's hypertable partitioning provides significant benefit only at billions of rows or when time-range deletions (chunk dropping) are frequent; neither condition applies here. Second, the system requires relational modelling beyond time-series: users, sessions, equipment, tokens, and images all have complex relationships with foreign keys and join requirements that relational databases handle natively but time-series databases handle poorly or not at all. Third, using a single database engine simplifies deployment, backup, monitoring, and developer onboarding. The composite index `(tess_observation_id, time)` provides the range-scan performance that a hypertable would otherwise offer, as confirmed by query plan analysis in @testing.
+The decision to use PostgreSQL @postgresql2024 over time series databases (TimescaleDB @timescale2024, InfluxDB) was made for three reasons. The first is that the data to be stored (at most tens of millions of rows) is within the capabilities of PostgreSQL with the appropriate indexing; TimescaleDB's partitioning of data into “hypertables” only becomes beneficial with billions of rows of data to store or frequently deleting chunks of data based on time ranges, neither of which are applicable to this project. Secondly, while time series databases are built to handle very large amounts of time series data, the application also requires a relational database to handle users, their sessions, equipment, tokens, and images - all of which have relationships with other elements of the database; relational databases support these relationships natively while time series databases do not. Finally, the use of a single database rather than two different database engines simplifies deployment, backup, monitoring, and onboarding of developers who will work on the project. The creation of the composite index of fields (tess_observation_id, time) provides the same range query plan performance as a hypertable as confirmed through analysis of the query plan when running a query @testing.
 
 == API Design <api_design>
 
