@@ -18,6 +18,7 @@ namespace Nyx::Core {
 		InternalError,
 		DatabaseError,
 		ExternalServiceError,
+		EmailNotVerified,
 	};
 
 	struct FieldError {
@@ -70,6 +71,14 @@ namespace Nyx::Core {
 			return AppError{ErrorCode::TokenExpired, "Token has expired", {}};
 		}
 
+		static auto email_not_verified() -> AppError {
+			return AppError{
+				ErrorCode::EmailNotVerified,
+				"Email address has not been verified",
+				{}
+			};
+		}
+
 		[[nodiscard]] auto http_status_code() const -> int {
 			switch (code) {
 				case ErrorCode::ValidationError:
@@ -80,6 +89,7 @@ namespace Nyx::Core {
 				case ErrorCode::TokenExpired:
 					return 401;
 				case ErrorCode::PermissionDenied:
+				case ErrorCode::EmailNotVerified:
 					return 403;
 				case ErrorCode::ResourceNotFound:
 					return 404;
@@ -121,6 +131,8 @@ namespace Nyx::Core {
 					return "DATABASE_ERROR";
 				case ErrorCode::ExternalServiceError:
 					return "EXTERNAL_SERVICE_ERROR";
+				case ErrorCode::EmailNotVerified:
+					return "EMAIL_NOT_VERIFIED";
 			}
 			return "UNKNOWN_ERROR";
 		}

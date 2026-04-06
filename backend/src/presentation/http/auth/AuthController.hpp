@@ -38,6 +38,27 @@ namespace Nyx::Presentation::Http::Auth {
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
         "Nyx::Presentation::Middleware::RateLimitFilter"
       );
+      ADD_METHOD_TO(
+        AuthController::verify_email,
+        "/api/v1/auth/verify-email",
+        drogon::Post,
+        "Nyx::Presentation::Middleware::CorrelationIdFilter",
+        "Nyx::Presentation::Middleware::RateLimitFilter"
+      );
+      ADD_METHOD_TO(
+        AuthController::resend_verification,
+        "/api/v1/auth/resend-verification",
+        drogon::Post,
+        "Nyx::Presentation::Middleware::CorrelationIdFilter",
+        "Nyx::Presentation::Middleware::RateLimitFilter"
+      );
+      ADD_METHOD_TO(
+        AuthController::google_login,
+        "/api/v1/auth/google",
+        drogon::Post,
+        "Nyx::Presentation::Middleware::CorrelationIdFilter",
+        "Nyx::Presentation::Middleware::RateLimitFilter"
+      );
 
       METHOD_LIST_END
 
@@ -63,7 +84,26 @@ namespace Nyx::Presentation::Http::Auth {
         std::function<void(const drogon::HttpResponsePtr&)>&& callback
       ) -> void;
 
+      auto verify_email(
+        const drogon::HttpRequestPtr& request,
+        std::function<void(const drogon::HttpResponsePtr&)>&& callback
+      ) -> void;
+
+      auto resend_verification(
+        const drogon::HttpRequestPtr& request,
+        std::function<void(const drogon::HttpResponsePtr&)>&& callback
+      ) -> void;
+
+      auto google_login(
+        const drogon::HttpRequestPtr& request,
+        std::function<void(const drogon::HttpResponsePtr&)>&& callback
+      ) -> void;
+
     private:
+      auto generate_csrf_token() -> std::string;
+
       std::shared_ptr<Nyx::Application::Auth::AuthService> auth_service;
+      bool cookie_secure = true;
+      uint32_t refresh_token_max_age_seconds = 604800;
   };
 } // namespace Nyx::Presentation::Http::Auth

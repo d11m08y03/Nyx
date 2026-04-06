@@ -41,6 +41,31 @@ namespace Nyx::Infrastructure::Config {
       "NASA_EXOPLANET_ARCHIVE_BASE_URL",
       "https://exoplanetarchive.ipac.caltech.edu"
     );
+    this->is_cookie_secure =
+      optional_env("COOKIE_SECURE", "true") == "true";
+    this->front_url =
+      optional_env("FRONTEND_URL", "http://localhost:5173");
+    this->verification_expiry_seconds =
+      static_cast<uint32_t>(std::stoi(optional_env(
+        "VERIFICATION_TOKEN_EXPIRY_SECONDS", "86400"
+      )));
+    this->mail_smtp_host =
+      optional_env("SMTP_HOST", "");
+    this->mail_smtp_port = static_cast<uint16_t>(
+      std::stoi(optional_env("SMTP_PORT", "587"))
+    );
+    this->mail_smtp_username =
+      optional_env("SMTP_USERNAME", "");
+    this->mail_smtp_password =
+      optional_env("SMTP_PASSWORD", "");
+    this->mail_smtp_from_email =
+      optional_env("SMTP_FROM_EMAIL", "");
+    this->mail_smtp_use_tls =
+      optional_env("SMTP_USE_TLS", "true") == "true";
+    this->oauth_google_client_id =
+      optional_env("GOOGLE_CLIENT_ID", "");
+    this->oauth_google_client_secret =
+      optional_env("GOOGLE_CLIENT_SECRET", "");
 
     spdlog::debug(
       "EnvironmentConfig loaded successfully"

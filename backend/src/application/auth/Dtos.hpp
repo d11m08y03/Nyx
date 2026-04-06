@@ -13,8 +13,14 @@ namespace Nyx::Application::Auth {
     std::string password;
   };
 
+  struct GoogleLoginRequest {
+    std::string code;
+    std::string redirect_uri;
+  };
+
   struct UserProfile {
     std::string id;
     std::string email;
+    bool email_verified = false;
   };
 } // namespace Nyx::Application::Auth

@@ -94,6 +94,61 @@ namespace Nyx::Presentation::Http {
         );
       }
 
+      static auto set_refresh_token_cookie(
+        drogon::HttpResponsePtr& response,
+        const std::string& refresh_token,
+        int max_age_seconds,
+        bool secure
+      ) -> void {
+        auto cookie = drogon::Cookie("refresh_token", refresh_token);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(secure);
+        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setPath("/api/v1/auth");
+        cookie.setMaxAge(max_age_seconds);
+        response->addCookie(cookie);
+      }
+
+      static auto clear_refresh_token_cookie(
+        drogon::HttpResponsePtr& response,
+        bool secure
+      ) -> void {
+        auto cookie = drogon::Cookie("refresh_token", "");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(secure);
+        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setPath("/api/v1/auth");
+        cookie.setMaxAge(0);
+        response->addCookie(cookie);
+      }
+
+      static auto set_csrf_cookie(
+        drogon::HttpResponsePtr& response,
+        const std::string& csrf_token,
+        bool secure
+      ) -> void {
+        auto cookie = drogon::Cookie("csrf_token", csrf_token);
+        cookie.setHttpOnly(false);
+        cookie.setSecure(secure);
+        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setPath("/");
+        cookie.setMaxAge(604800);
+        response->addCookie(cookie);
+      }
+
+      static auto clear_csrf_cookie(
+        drogon::HttpResponsePtr& response,
+        bool secure
+      ) -> void {
+        auto cookie = drogon::Cookie("csrf_token", "");
+        cookie.setHttpOnly(false);
+        cookie.setSecure(secure);
+        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response->addCookie(cookie);
+      }
+
     private:
       static auto make_json_response(
         const nlohmann::json& body,

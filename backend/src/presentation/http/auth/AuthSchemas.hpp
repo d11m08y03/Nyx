@@ -35,25 +35,45 @@ namespace Nyx::Presentation::Http::Auth {
       }
     })");
 
-  inline const auto refresh_request_schema =
+  inline const auto verify_email_schema =
     nlohmann::json::parse(R"({
       "type": "object",
-      "required": ["refresh_token"],
+      "required": ["token"],
       "additionalProperties": false,
       "properties": {
-        "refresh_token": {
-          "type": "string"
+        "token": {
+          "type": "string",
+          "minLength": 1
         }
       }
     })");
-  inline const auto logout_request_schema =
+
+  inline const auto resend_verification_schema =
     nlohmann::json::parse(R"({
       "type": "object",
-      "required": ["refresh_token"],
+      "required": ["email"],
       "additionalProperties": false,
       "properties": {
-        "refresh_token": {
-          "type": "string"
+        "email": {
+          "type": "string",
+          "format": "email"
+        }
+      }
+    })");
+
+  inline const auto google_login_schema =
+    nlohmann::json::parse(R"({
+      "type": "object",
+      "required": ["code", "redirect_uri"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redirect_uri": {
+          "type": "string",
+          "minLength": 1
         }
       }
     })");

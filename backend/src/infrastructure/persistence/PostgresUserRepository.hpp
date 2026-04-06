@@ -18,5 +18,20 @@ namespace Nyx::Infrastructure::Persistence {
         const std::string& user_id,
         const std::string& display_name
       ) -> Nyx::Core::Result<void> override;
+
+      auto find_by_id(const std::string& id)
+        -> Nyx::Core::Result<
+          std::optional<Nyx::Domain::User>
+        > override;
+
+      auto verify_email(const std::string& user_id)
+        -> Nyx::Core::Result<void> override;
+
+      auto find_by_google_id(
+        const std::string& google_id
+      ) -> Nyx::Core::Result<
+        std::optional<Nyx::Domain::User>
+      > override;
+
   };
 } // namespace Nyx::Infrastructure::Persistence

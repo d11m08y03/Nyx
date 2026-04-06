@@ -14,7 +14,8 @@ namespace Nyx::Presentation::Http::Equipment {
       ADD_METHOD_TO(
         CameraController::create, "/api/v1/cameras", drogon::Post,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         CameraController::list, "/api/v1/cameras", drogon::Get,
@@ -29,12 +30,14 @@ namespace Nyx::Presentation::Http::Equipment {
       ADD_METHOD_TO(
         CameraController::update, "/api/v1/cameras/{id}", drogon::Put,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         CameraController::remove, "/api/v1/cameras/{id}", drogon::Delete,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
 
       METHOD_LIST_END

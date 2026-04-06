@@ -16,7 +16,8 @@ namespace Nyx::Presentation::Http::Profile {
         "/api/v1/users/me/profile",
         drogon::Put,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
 
       METHOD_LIST_END

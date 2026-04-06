@@ -14,7 +14,8 @@ namespace Nyx::Presentation::Http::Equipment {
       ADD_METHOD_TO(
         MountController::create, "/api/v1/mounts", drogon::Post,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         MountController::list, "/api/v1/mounts", drogon::Get,
@@ -29,12 +30,14 @@ namespace Nyx::Presentation::Http::Equipment {
       ADD_METHOD_TO(
         MountController::update, "/api/v1/mounts/{id}", drogon::Put,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         MountController::remove, "/api/v1/mounts/{id}", drogon::Delete,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
 
       METHOD_LIST_END

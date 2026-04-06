@@ -18,7 +18,8 @@ namespace Nyx::Presentation::Http::Observation {
         "/api/v1/observation-sessions",
         drogon::Post,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         ObservationSessionController::list,
@@ -39,21 +40,24 @@ namespace Nyx::Presentation::Http::Observation {
         "/api/v1/observation-sessions/{id}",
         drogon::Put,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         ObservationSessionController::remove,
         "/api/v1/observation-sessions/{id}",
         drogon::Delete,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         ObservationSessionController::run_photometry,
         "/api/v1/observation-sessions/{id}/photometry",
         drogon::Post,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
 
       METHOD_LIST_END

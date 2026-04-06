@@ -18,14 +18,16 @@ namespace Nyx::Presentation::Http::Observation {
         "/api/v1/observation-sessions/{session_id}/images",
         drogon::Post,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
       ADD_METHOD_TO(
         ObservationImageController::remove,
         "/api/v1/observation-sessions/{session_id}/images/{image_id}",
         drogon::Delete,
         "Nyx::Presentation::Middleware::CorrelationIdFilter",
-        "Nyx::Presentation::Middleware::JwtAuthFilter"
+        "Nyx::Presentation::Middleware::JwtAuthFilter",
+        "Nyx::Presentation::Middleware::CsrfFilter"
       );
 
       METHOD_LIST_END

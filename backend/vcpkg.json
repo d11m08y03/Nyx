@@ -15,6 +15,7 @@
     "gtest",
     "cfitsio",
     "exiv2",
-    "libraw"
+    "libraw",
+    "curl"
   ]
 }

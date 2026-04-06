@@ -29,6 +29,7 @@ target_link_libraries(nyx-tests PRIVATE
     unofficial-sodium::sodium
     nlohmann_json_schema_validator::validator
     CFITSIO::cfitsio
+    CURL::libcurl
 )
 
 target_include_directories(nyx-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

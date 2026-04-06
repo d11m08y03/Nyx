@@ -104,7 +104,8 @@ namespace Nyx::Infrastructure::Security {
 
       auto verifier = jwt::verify()
         .allow_algorithm(jwt::algorithm::hs256{this->config->jwt_secret()})
-        .with_issuer("nyx");
+        .with_issuer("nyx")
+        .with_type("access");
 
       verifier.verify(decoded_token);
 
