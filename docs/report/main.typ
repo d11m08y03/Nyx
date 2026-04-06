@@ -12,8 +12,6 @@
   body,
 )
 
-#import "frontmatter/utils.typ": gls
-
 #include "frontmatter/abstract.typ"
 #pagebreak()
 #outline(indent: auto)
