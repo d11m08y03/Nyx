@@ -205,10 +205,92 @@ The core/ directory is separate from the domain/ directory in order to represent
 The database is managed by goose migration files @postgresql2024. Tables are grouped into four domains: authentication, targets, equipment, and observations. @erd shows the entity-relationship diagram.
 
 #figure(
-  rect(width: 100%, height: 300pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Entity-relationship diagram --- 18 tables across four domains. users #sym.arrow.l refresh\_tokens, verification\_tokens. targets #sym.arrow.l tess\_observations #sym.arrow.l light\_curve\_points. users #sym.arrow.l telescopes, cameras, mounts, filters, observing\_locations. users #sym.arrow.l observation\_sessions #sym.arrow.l observation\_images. observation\_sessions references targets and all equipment tables._]
-  ],
-  caption: [Entity-relationship diagram of the Nyx database schema.],
+  diagram(
+    spacing: (16mm, 11mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 8pt,
+    node-shape: rect,
+
+    // === Authentication domain (top) ===
+    node((1, 0), align(center)[*users*], name: <users>,
+      fill: rgb("#dbeafe"), stroke: 0.8pt),
+    node((0, 1), align(center)[refresh\_tokens], name: <refresh>,
+      fill: rgb("#dbeafe")),
+    node((2, 1), align(center)[verification\_tokens], name: <verify>,
+      fill: rgb("#dbeafe")),
+    node(enclose: (<users>, <refresh>, <verify>),
+      stroke: (paint: rgb("#3b82f6"), dash: "dashed"),
+      inset: 12pt, snap: -1, name: <auth-group>),
+    node((rel: (0pt, 0pt), to: <auth-group.north-west>),
+      [_Authentication_], stroke: none, fill: white, inset: 2pt),
+
+    // === Target domain (middle row) ===
+    node((0, 3), align(center)[*targets*], name: <targets>,
+      fill: rgb("#ede9fe")),
+    node((1, 3), align(center)[tess\_observations], name: <tessobs>,
+      fill: rgb("#ede9fe")),
+    node((2, 3), align(center)[light\_curve\_points], name: <lcp>,
+      fill: rgb("#ede9fe")),
+    node(enclose: (<targets>, <tessobs>, <lcp>),
+      stroke: (paint: rgb("#7c3aed"), dash: "dashed"),
+      inset: 12pt, snap: -1, name: <target-group>),
+    node((rel: (0pt, 0pt), to: <target-group.north-west>),
+      [_Targets_], stroke: none, fill: white, inset: 2pt),
+
+    // === Equipment domain (below targets) ===
+    node((0, 5), align(center)[telescopes], name: <tel>,
+      fill: rgb("#dcfce7")),
+    node((1, 5), align(center)[cameras], name: <cam>,
+      fill: rgb("#dcfce7")),
+    node((2, 5), align(center)[mounts], name: <mnt>,
+      fill: rgb("#dcfce7")),
+    node((0.5, 6), align(center)[filters], name: <flt>,
+      fill: rgb("#dcfce7")),
+    node((1.5, 6), align(center)[observing\_locations], name: <loc>,
+      fill: rgb("#dcfce7")),
+    node(enclose: (<tel>, <cam>, <mnt>, <flt>, <loc>),
+      stroke: (paint: rgb("#16a34a"), dash: "dashed"),
+      inset: 12pt, snap: -1, name: <equip-group>),
+    node((rel: (0pt, 0pt), to: <equip-group.north-west>),
+      [_Equipment_], stroke: none, fill: white, inset: 2pt),
+
+    // === Observation domain (bottom) ===
+    node((1, 8), align(center)[observation\_sessions], name: <sess>,
+      fill: rgb("#fee2e2")),
+    node((1, 9), align(center)[observation\_images], name: <img>,
+      fill: rgb("#fee2e2")),
+    node(enclose: (<sess>, <img>),
+      stroke: (paint: rgb("#dc2626"), dash: "dashed"),
+      inset: 12pt, snap: -1, name: <obs-group>),
+    node((rel: (0pt, 0pt), to: <obs-group.north-west>),
+      [_Observations_], stroke: none, fill: white, inset: 2pt),
+
+    // === Authentication relationships ===
+    edge(<refresh>, <users>, "->"),
+    edge(<verify>, <users>, "->"),
+
+    // === Target chain ===
+    edge(<tessobs>, <targets>, "->"),
+    edge(<lcp>, <tessobs>, "->"),
+
+    // === Equipment → users ===
+    edge(<tel>, <users>, "->", bend: -10deg),
+    edge(<cam>, <users>, "->"),
+    edge(<mnt>, <users>, "->", bend: 10deg),
+    edge(<flt>, <users>, "->", bend: -15deg),
+    edge(<loc>, <users>, "->", bend: 15deg),
+
+    // === Observation relationships ===
+    edge(<sess>, <users>, "->"),
+    edge(<sess>, <targets>, "->"),
+    edge(<sess>, <tel>, "->"),
+    edge(<sess>, <cam>, "->"),
+    edge(<sess>, <mnt>, "->"),
+    edge(<sess>, <loc>, "->"),
+    edge(<img>, <sess>, "->"),
+  ),
+  caption: [Entity-relationship diagram of the Nyx database schema. Arrows indicate foreign key references (child #sym.arrow parent). Tables are colour-coded by domain: authentication (blue), targets (purple), equipment (green), and observations (red). All equipment tables reference `users` via `user_id`. The `observation_sessions` table references `users`, `targets`, and equipment tables.],
 ) <erd>
 
 === Authentication Domain
@@ -689,10 +771,78 @@ The API does not implement cursor-based pagination. At the current scale --- a u
 The TESS data ingestion pipeline is a four-stage ETL process that transforms a user-provided target name into a set of persisted light curve time-series records. The pipeline is implemented in `TargetService` and `TessObservationController`, with the MAST API communication delegated to `IMastClient` and the FITS parsing delegated to `IFitsParser`. @pipeline_diagram illustrates the stages.
 
 #figure(
-  rect(width: 100%, height: 180pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Pipeline flow diagram --- Stage 1: Name Resolution (Mast.Name.Lookup) #sym.arrow Stage 2: Observation Search (Mast.Caom.Filtered.Position) #sym.arrow Stage 3: Product Discovery (Mast.Caom.Products) #sym.arrow Stage 4: FITS Download and Parse (HTTP GET + CFITSIO). Each stage shows input, API call, and persisted output._]
-  ],
-  caption: [Four-stage TESS data ingestion pipeline.],
+  diagram(
+    spacing: (6mm, 8mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 6pt,
+    node-shape: rect,
+
+    // === Column headers ===
+    node((-1, -0.3), align(center)[#text(size: 8pt, weight: "bold")[PostgreSQL]],
+      name: <dbhdr>, stroke: none, fill: none),
+    node((1, -0.3), align(center)[#text(size: 8pt, weight: "bold")[External API]],
+      name: <apihdr>, stroke: none, fill: none),
+
+    // === Input ===
+    node((0, 0), align(center)[Target name (user input)],
+      name: <input>, stroke: (dash: "dashed"), width: 150pt),
+
+    // === Stage 1 ===
+    node((0, 1), align(center)[*Stage 1:* Name Resolution],
+      name: <s1>, fill: rgb("#dbeafe"), width: 150pt),
+    node((1, 1), align(center)[`Mast.Name.Lookup`],
+      name: <s1api>, fill: luma(240)),
+    node((-1, 1), align(center)[`targets`],
+      name: <s1out>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04")),
+
+    // === Stage 2 ===
+    node((0, 2), align(center)[*Stage 2:* Observation Search],
+      name: <s2>, fill: rgb("#dcfce7"), width: 150pt),
+    node((1, 2), align(center)[`Mast.Caom.`\ `Filtered.Position`],
+      name: <s2api>, fill: luma(240)),
+    node((-1, 2), align(center)[`tess_observations`],
+      name: <s2out>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04")),
+
+    // === Stage 3 ===
+    node((0, 3), align(center)[*Stage 3:* Product Discovery],
+      name: <s3>, fill: rgb("#ede9fe"), width: 150pt),
+    node((1, 3), align(center)[`Mast.Caom.Products`],
+      name: <s3api>, fill: luma(240)),
+    node((-1, 3), align(center)[`data_uri` updated],
+      name: <s3out>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04")),
+
+    // === Stage 4 ===
+    node((0, 4), align(center)[*Stage 4:* FITS Download\ and Parse],
+      name: <s4>, fill: rgb("#fee2e2"), width: 150pt),
+    node((1, 4), align(center)[HTTP GET + CFITSIO],
+      name: <s4api>, fill: luma(240)),
+    node((-1, 4), align(center)[`light_curve_points`],
+      name: <s4out>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04")),
+
+    // === Vertical flow arrows ===
+    edge(<input>, <s1>, "->"),
+    edge(<s1>, <s2>, "->"),
+    edge(<s2>, <s3>, "->"),
+    edge(<s3>, <s4>, "->"),
+
+    // === Horizontal arrows (stage → API call) ===
+    edge(<s1>, <s1api>, "->"),
+    edge(<s2>, <s2api>, "->"),
+    edge(<s3>, <s3api>, "->"),
+    edge(<s4>, <s4api>, "->"),
+
+    // === Horizontal arrows (stage → DB output) ===
+    edge(<s1>, <s1out>, "->"),
+    edge(<s2>, <s2out>, "->"),
+    edge(<s3>, <s3out>, "->"),
+    edge(<s4>, <s4out>, "->"),
+  ),
+  caption: [Four-stage TESS data ingestion pipeline. Each stage calls a MAST API service (right) and persists its output to PostgreSQL (left).],
 ) <pipeline_diagram>
 
 === Stage 1: Name Resolution
@@ -794,10 +944,67 @@ A TESS light curve FITS file (`*_lc.fits`) contains multiple Header Data Units (
 @fits_structure illustrates the layout.
 
 #figure(
-  rect(width: 100%, height: 160pt, stroke: 0.5pt)[
-    #align(center + horizon)[_FITS file structure diagram --- HDU 1 (Primary): header keywords only. HDU 2 (Binary Table Extension): TIME, SAP\_FLUX, PDCSAP\_FLUX, PDCSAP\_FLUX\_ERR, QUALITY columns, one row per cadence (~18,000 rows at 2-min cadence). HDU 3+: aperture mask, auxiliary data (not used)._]
-  ],
-  caption: [Structure of a TESS light curve FITS file.],
+  diagram(
+    spacing: (6mm, 6mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 6pt,
+    node-shape: rect,
+
+    // === File container ===
+    node((0, 0), align(center)[*TESS Light Curve FITS File*\ (`*_lc.fits`)],
+      name: <file>, width: 200pt, fill: luma(240)),
+
+    // === HDU 1 ===
+    node((0, 1), align(center)[*HDU 1 --- Primary Header*],
+      name: <hdu1>, width: 200pt, fill: rgb("#dbeafe")),
+    node((1, 1), align(left)[
+      #text(size: 8pt)[
+        `TELESCOP` = TESS\
+        `TICID` = target ID\
+        `SECTOR` = sector number\
+        `CAMERA`, `CCD`\
+        `TSTART`, `TSTOP`
+      ]
+    ], name: <hdu1meta>, fill: luma(248)),
+
+    // === HDU 2 ===
+    node((0, 2), align(center)[*HDU 2 --- Binary Table*\ #text(size: 8pt)[(read by parser)]],
+      name: <hdu2>, width: 200pt, fill: rgb("#dcfce7")),
+    node((1, 2), align(left)[
+      #text(size: 8pt)[
+        `TIME` #h(12pt) DOUBLE\
+        `SAP_FLUX` #h(12pt) FLOAT\
+        `PDCSAP_FLUX` #h(12pt) FLOAT\
+        `PDCSAP_FLUX_ERR` #h(2pt) FLOAT\
+        `QUALITY` #h(12pt) INT\
+        #sym.tilde 18,000 rows at 2-min cadence
+      ]
+    ], name: <hdu2cols>, fill: rgb("#f0fdf4")),
+
+    // === HDU 3+ ===
+    node((0, 3), align(center)[*HDU 3+ --- Auxiliary*\ #text(size: 8pt)[(not used by Nyx)]],
+      name: <hdu3>, width: 200pt, fill: luma(248),
+      stroke: (dash: "dashed")),
+    node((1, 3), align(left)[
+      #text(size: 8pt)[
+        Aperture pixel mask\
+        Background estimates
+      ]
+    ], name: <hdu3meta>, fill: luma(248),
+      stroke: (dash: "dashed")),
+
+    // === Vertical flow ===
+    edge(<file>, <hdu1>, "->"),
+    edge(<hdu1>, <hdu2>, "->"),
+    edge(<hdu2>, <hdu3>, "->"),
+
+    // === Horizontal detail arrows ===
+    edge(<hdu1>, <hdu1meta>, "-"),
+    edge(<hdu2>, <hdu2cols>, "-"),
+    edge(<hdu3>, <hdu3meta>, "-"),
+  ),
+  caption: [Structure of a TESS light curve FITS file. HDU 2 contains the columns parsed by `FitsParser`.],
 ) <fits_structure>
 
 === Light Curve Columns
@@ -968,9 +1175,60 @@ When the client's access token expires, it sends `POST /auth/refresh`. The refre
 @token_rotation_sequence illustrates this flow.
 
 #figure(
-  rect(width: 100%, height: 220pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Sequence diagram for refresh token rotation. Client #sym.arrow Server: POST \/auth\/refresh (cookie: refresh\_token=T1). Server: hash(T1) #sym.arrow lookup #sym.arrow found, not revoked #sym.arrow revoke T1 #sym.arrow generate T2 (same family\_id) #sym.arrow store hash(T2) #sym.arrow return access\_token + Set-Cookie: refresh\_token=T2. Reuse scenario: Client sends T1 again #sym.arrow Server: hash(T1) #sym.arrow found but is\_revoked=TRUE #sym.arrow revoke ALL tokens with same family\_id #sym.arrow return 401._]
-  ],
+  diagram(
+    spacing: (8mm, 7mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 6pt,
+    node-shape: rect,
+
+    // === Start ===
+    node((0, 0), align(center)[`POST /auth/refresh`\ cookie: `refresh_token = T1`],
+      name: <start>, fill: luma(240), width: 150pt),
+
+    // === Hash and lookup ===
+    node((0, 1), align(center)[Compute `hash(T1)`\ and look up in database],
+      name: <lookup>, fill: rgb("#dbeafe"), width: 150pt),
+
+    // === Not found ===
+    node((1, 2), align(center)[Return 401],
+      name: <notfound>, fill: rgb("#fee2e2")),
+
+    // === Decision: revoked? ===
+    node((0, 3), align(center)[`is_revoked`?],
+      name: <check>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04"), width: 100pt),
+
+    // === Reuse path (right) ===
+    node((1, 4), align(center)[Revoke all tokens\ with same `family_id`],
+      name: <revokefam>, fill: rgb("#fee2e2")),
+    node((1, 5), align(center)[Return 401],
+      name: <reuse401>, fill: rgb("#fee2e2")),
+
+    // === Normal path (left) ===
+    node((-1, 4), align(center)[Revoke T1],
+      name: <revoket1>, fill: rgb("#dcfce7")),
+    node((-1, 5), align(center)[Generate T2 with\ same `family_id`\ Store `hash(T2)`],
+      name: <generate>, fill: rgb("#dcfce7")),
+    node((-1, 6), align(center)[Return `access_token`\ Set-Cookie: T2],
+      name: <success>, fill: rgb("#dcfce7")),
+
+    // === Edges ===
+    edge(<start>, <lookup>, "->"),
+    edge(<lookup>, <check>, "->",
+      label: [#text(size: 7pt)[found]]),
+    edge(<lookup>, <notfound>, "->",
+      label: [#text(size: 7pt)[not found]]),
+
+    edge(<check>, <revokefam>, "->",
+      label: [#text(size: 7pt)[TRUE]]),
+    edge(<check>, <revoket1>, "->",
+      label: [#text(size: 7pt)[FALSE]]),
+
+    edge(<revokefam>, <reuse401>, "->"),
+    edge(<revoket1>, <generate>, "->"),
+    edge(<generate>, <success>, "->"),
+  ),
   caption: [Refresh token rotation with family-based reuse detection.],
 ) <token_rotation_sequence>
 
@@ -1004,9 +1262,76 @@ Passwords are hashed using Argon2id @biryukov2016, the winner of the 2015 Passwo
 @login_sequence illustrates the complete login flow.
 
 #figure(
-  rect(width: 100%, height: 200pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Sequence diagram for login. Client #sym.arrow Server: POST \/auth\/login {email, password}. Server: find user by email #sym.arrow verify password hash (Argon2id) #sym.arrow generate access\_token (JWT, 15min) + refresh\_token (UUID, 7d) #sym.arrow hash refresh\_token (SHA-256) #sym.arrow store in refresh\_tokens table #sym.arrow return {access\_token, csrf\_token} + Set-Cookie: refresh\_token=..., Set-Cookie: csrf\_token=..._]
-  ],
+  diagram(
+    spacing: (14mm, 7mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 6pt,
+    node-shape: rect,
+
+    // === Request ===
+    node((0, 0), align(center)[`POST /auth/login`\ `{email, password}`],
+      name: <req>, fill: luma(240), width: 140pt),
+
+    // === Find user ===
+    node((0, 1), align(center)[Find user by email],
+      name: <find>, fill: rgb("#dbeafe"), width: 140pt),
+
+    // === Not found ===
+    node((1, 1), align(center)[Return 401],
+      name: <nf>, fill: rgb("#fee2e2")),
+
+    // === Verify password ===
+    node((0, 2), align(center)[Verify password\ hash (Argon2id)],
+      name: <verify>, fill: rgb("#dbeafe"), width: 140pt),
+
+    // === Mismatch ===
+    node((1, 2), align(center)[Return 401],
+      name: <bad>, fill: rgb("#fee2e2")),
+
+    // === Check email verified ===
+    node((0, 3), align(center)[Check\ `email_verified = TRUE`],
+      name: <emailchk>, fill: rgb("#dbeafe"), width: 140pt),
+
+    // === Not verified ===
+    node((1, 3), align(center)[Return 403],
+      name: <unverif>, fill: rgb("#fee2e2")),
+
+    // === Generate tokens ===
+    node((0, 4), align(center)[Generate `access_token`\ (JWT, 15 min)],
+      name: <jwt>, fill: rgb("#dcfce7"), width: 150pt),
+
+    // === Refresh token ===
+    node((0, 5), align(center)[Generate `refresh_token`\ (UUID, 7 days)],
+      name: <rt>, fill: rgb("#dcfce7"), width: 150pt),
+
+    // === Store ===
+    node((0, 6), align(center)[Store `hash(refresh_token)`\ in `refresh_tokens` table],
+      name: <store>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04"), width: 150pt),
+
+    // === Return ===
+    node((0, 7), align(center)[Return `{access_token}`\ Set-Cookie: `refresh_token`\ Set-Cookie: `csrf_token`],
+      name: <resp>, fill: rgb("#dcfce7"), width: 150pt),
+
+    // === Edges ===
+    edge(<req>, <find>, "->"),
+    edge(<find>, <verify>, "->",
+      label: [#text(size: 7pt)[found]]),
+    edge(<find>, <nf>, "->",
+      label: [#text(size: 7pt)[not found]]),
+    edge(<verify>, <emailchk>, "->",
+      label: [#text(size: 7pt)[match]]),
+    edge(<verify>, <bad>, "->",
+      label: [#text(size: 7pt)[mismatch]]),
+    edge(<emailchk>, <jwt>, "->",
+      label: [#text(size: 7pt)[verified]]),
+    edge(<emailchk>, <unverif>, "->",
+      label: [#text(size: 7pt)[not verified]]),
+    edge(<jwt>, <rt>, "->"),
+    edge(<rt>, <store>, "->"),
+    edge(<store>, <resp>, "->"),
+  ),
   caption: [Login sequence showing token generation and cookie setting.],
 ) <login_sequence>
 

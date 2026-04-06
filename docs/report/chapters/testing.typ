@@ -1,25 +1,25 @@
 = Testing and Validation <testing>
 
-This chapter describes the testing strategy, the test infrastructure, test coverage across subsystems, and validation of the data ingestion pipeline against known astronomical data.
+This test exercises the entire pipeline, from name resolution to TESS observation search and insert. All of the external components of this search are mocked in this test, so it completes in milliseconds without accessing the network or the database.
 
 == Testing Strategy
 
-The project uses a two-tier testing approach:
+The test suite is based on the following two-tier approach:
 
-+ *Unit tests*: Verify individual service methods in isolation using mock dependencies. All external interfaces (repositories, HTTP clients, parsers) are replaced with GoogleTest/GoogleMock fakes.
-+ *Manual integration tests*: Verify end-to-end behaviour through the running application using HTTP client tools (Bruno) against a local PostgreSQL instance with real MAST API calls.
+- Unit tests verify each of the individual methods within the service class. All external dependencies are mocked.
+- Manual integration tests verify the end-to-end behaviour of the application by manually running the application and using HTTP client tools (Bruno) to make requests against a local PostgreSQL instance making actual calls to the MAST API.
 
-Automated integration tests (spinning up a database and Drogon server in-process) were considered but not implemented due to the complexity of initialising Drogon's event loop within a test harness. Instead, the application-layer unit tests cover the full business logic, and the infrastructure layer is validated manually.
+While integration tests that started the database and Drogon server within the test were considered for inclusion, they were not implemented due to the complexity of initialising the Drogon event loop within a test. As such, all unit tests for the application layer have been implemented and manual tests have been performed for the infrastructure layer.
 
 == Test Infrastructure
 
 === Framework
 
-The test suite uses GoogleTest 1.14 @googletest2024 with GoogleMock for interface mocking. The test binary is built as a separate CMake target (`nyx-tests`) that links against the same application and domain libraries as the main binary but excludes infrastructure and presentation code.
+The test suite uses GoogleTest 1.14 @googletest2024 with GoogleMock. The test binary is a separate CMake target (nyx-tests) that links against the same libraries as the main binary, but excluding infrastructure and presentation.
 
 === Mock Design
 
-Each domain interface has a corresponding mock class generated with GoogleMock's `MOCK_METHOD` macro. Mock classes are defined locally within each test file rather than in shared headers, avoiding coupling between test suites. For example, the `MockMastClient` in `TargetServiceTest.cpp`:
+Each interface has a corresponding mock class generated with the MOCK_METHOD macro. Mock classes are defined locally in test files so that test suites do not have to be coupled to each other. For example, the MockMastClient class defined in TargetServiceTest.cpp:
 
 ```cpp
 class MockMastClient : public IMastClient {
@@ -37,7 +37,7 @@ class MockMastClient : public IMastClient {
 };
 ```
 
-Each test fixture injects `std::shared_ptr` mock instances into the service under test via constructor injection --- the same mechanism used in production. This validates that services depend only on abstract interfaces and never on concrete implementations.
+Each test fixture injects a std::shared_ptr instance of each mock class into the service under test through its constructor - the same injection mechanism that is employed in production.
 
 === Test Fixture Pattern
 
@@ -61,7 +61,7 @@ class TargetServiceTest : public ::testing::Test {
 };
 ```
 
-This ensures complete isolation between tests --- no shared mutable state can leak between cases.
+This ensures complete isolation between tests, no shared mutable state can leak between cases.
 
 == Test Suite Summary
 
@@ -92,7 +92,7 @@ The test suite comprises 136 test cases across 9 test files, organised by the su
 
 === Error Handling (12 cases)
 
-The `AppErrorTest` suite validates the `AppError` factory methods and the `Result<T>` type alias. Each error code is tested for its HTTP status mapping and string representation. The `ValidationErrorWithDetails` test verifies that field-level error details are preserved:
+The AppErrorTest suite validates the AppError factory methods and the Result<T> type alias. Each error code is tested to ensure that it has the correct HTTP status and string representation. The ValidationErrorWithDetails test ensures that the errors created with field details correctly display those details:
 
 ```cpp
 TEST(AppErrorTest, ValidationErrorWithDetails) {
@@ -106,27 +106,21 @@ TEST(AppErrorTest, ValidationErrorWithDetails) {
 }
 ```
 
-The `RequestValidatorTest` suite tests JSON schema validation against a schema requiring `email` (format: email) and `password` (minLength: 8). It covers valid input, missing required fields, invalid email format, password length violation, and rejection of extra fields.
+The RequestValidatorTest suite tests that a request with a schema that requires an email field with a format of “email” and a password field with minLength of 8 validates correctly against valid inputs, missing fields, invalid emails, wrong password length, and extra fields.
 
 === Authentication (25 cases)
 
-The `AuthServiceTest` suite covers all authentication flows:
+The AuthServiceTest suite covers all authentication flows:
 
-*Registration (4 cases)*: Successful registration with password hashing and email verification token generation, duplicate email conflict, password hash failure, and verification that a verification email is sent on registration.
+- Registration: successful registration with password hashing and verification token generation, duplicate email, password hash failure, and verification of sent verification email upon registration.
+- Login: successful login, user not found, wrong password, attempting to login with unverified email (EmailNotVerified error code), and attempting to login in with password by Google-only users.
+- Email Verification: successful verification of email and verification token, verification token not found, verification token already used, and expired verification token.
+- Resend Verification: successful resend of verification email with old verification tokens revoked, and silent success in case user is not found (preventing enumeration of users by email).
+- Google OAuth: successful creation of new users with verified email via Google OAuth with auth_provider set to "google", login of existing Google OAuth users, preventing creation of users with same email as local user account, and failure of Google OAuth code exchange.
+- Refresh Token Rotation: successful rotation of refresh token to issue new token pair, refreshing of token pair when token not found in database, and detection of reuse of refresh token which invalidates entire refresh token family.
+- Logout: successful logout, invalid token upon failed verification of token hash, and refresh token hash not found in database.
 
-*Login (5 cases)*: Successful login with token pair generation, user not found, wrong password, rejection of unverified users (`EmailNotVerified` error code), and rejection of Google-only users attempting password login.
-
-*Email Verification (4 cases)*: Successful verification marking the token as used and the user's email as verified, token not found, token already used, and expired token.
-
-*Resend Verification (2 cases)*: Successful resend with old tokens revoked, and silent success when user is not found (to prevent email enumeration).
-
-*Google OAuth (4 cases)*: New user creation with `email_verified = true` and `auth_provider = "google"`, existing Google user login, email conflict when a local account exists with the same email, and code exchange failure.
-
-*Refresh Token Rotation (3 cases)*: Successful refresh issuing a new token pair, token not found in database, and reuse detection revoking the entire token family.
-
-*Logout (3 cases)*: Successful revocation, invalid token (verification failure), and token hash not found in database.
-
-The reuse detection test is particularly important for security. It verifies that presenting a revoked refresh token triggers `revoke_family`, which invalidates all tokens in the rotation chain:
+The test for detecting reuse of refresh tokens is important for security. When a refresh token is revoked, all tokens associated with that refresh token are invalidated via the revoke_family function:
 
 ```cpp
 TEST_F(AuthServiceTest, RefreshReuseDetectionRevokesFamily) {
@@ -150,19 +144,15 @@ TEST_F(AuthServiceTest, RefreshReuseDetectionRevokesFamily) {
 
 === Target Resolution and Light Curves (26 cases)
 
-The `TargetServiceTest` suite covers the data ingestion pipeline:
+The following tests ensure coverage of the data ingestion pipeline:
 
-*Target Resolution (8 cases)*: New target with TESS observations (full pipeline: MAST resolve, target create, TESS search, bulk insert), new target with no TESS data, cached target returning stored observations, MAST name not found, MAST API unavailable, TESS search failure, database error on target creation, and duplicate `obsid` handling (only new observations are inserted).
+- Target Resolution: Tests for a new target that has TESS observations to ingest (full ingestion pipeline), a new target that does not have TESS observations, a cached target that already has its observations stored, a target whose MAST name is not found, an unavailable MAST API, failed TESS search, database error on target creation, and a case where there are duplicate obsid values for observations (only new observations are ingested).
+- Target Retrieval: Tests getting a target by ID (success and not found) and listing the TESS observations for a target (success and target not found).
+- Product Discovery: Tests discovering a product successfully (choosing the \_lc.fits file), a case where the observation already has a data_uri, a case where the observation is not found, a case where there is no light curve file within the products for that observation, and a failed request to the MAST API.
+- Light Curve Fetch: Tests the successful fetch and storage of a light curve, a case where the observation does not have a data_uri set, a case where the light curve has already been fetched and imported (points exist), and a failed attempt to download the light curve.
+- Light Curve Retrieval: Tests retrieving a light curve successfully, retrieving a light curve with the quality filter enabled, and a case where the result from the MAST API is empty.
 
-*Target Retrieval (5 cases)*: Get target by ID (success and not found), list TESS observations (success, empty, target not found).
-
-*Product Discovery (5 cases)*: Successful discovery selecting the `_lc.fits` file, observation already has a `data_uri`, observation not found, no light curve file in products, and MAST API failure.
-
-*Light Curve Fetch (4 cases)*: Successful download/parse/store pipeline, no `data_uri` set, already fetched (points exist), and download failure.
-
-*Light Curve Retrieval (3 cases)*: Successful retrieval, retrieval with quality filter enabled, and empty result.
-
-The duplicate handling test verifies idempotent ingestion. When MAST returns observations that partially overlap with stored data, only the new observations are passed to `bulk_create`:
+The test for duplicate observations ensures that only new observations are passed to the bulk_create method on the Observation model:
 
 ```cpp
 TEST_F(TargetServiceTest, ResolveDuplicateObsidHandling) {
@@ -179,21 +169,21 @@ TEST_F(TargetServiceTest, ResolveDuplicateObsidHandling) {
 
 === Equipment and Locations (29 cases)
 
-The `EquipmentServiceTest` suite (16 cases) tests CRUD operations for all four equipment types (telescopes, cameras, mounts, filters). Each type is tested for creation success, database errors, listing, retrieval, ownership verification (denying access to another user's equipment), update, and deletion.
+EquipmentServiceTest (16 tests) tests all CRUD operations for each of the four different types of equipment.
 
-The `LocationServiceTest` suite (13 cases) tests observing location CRUD with additional cases for duplicate name conflicts, update with same name (skipping the uniqueness check), and ownership enforcement across all operations.
+LocationServiceTest (13 tests) tests all of the CRUD operations for observing locations, as well as additional tests for cases like duplicate location names, updating a location with the same name, and ownership.
 
 === Observation Sessions (30 cases)
 
-The `ObservationServiceTest` suite covers session creation (with validation of equipment and location ownership), listing, retrieval, update, deletion, image upload (including size limits and unsupported format rejection), and image deletion. Ownership is verified at every level --- a user cannot access another user's sessions or images.
+The ObservationServiceTest suite tests the creation, listing, retrieval, updating, deletion of sessions, uploading and deleting images from those sessions. Furthermore, each of these actions validates that the user owns the equipment or location being used. Thus, no users will be able to access another user’s observations or observation images.
 
 === Light Curve Comparison (11 cases)
 
-The `LightCurveComparisonServiceTest` suite tests the overlay of ground-based observations on TESS light curves. This includes time system conversion between UTC timestamps and BTJD, flux normalisation, and handling of edge cases such as missing TESS data, empty observation images, or targets without observation sessions.
+The LightCurveComparisonServiceTest suite allows for testing the placement of ground-based observations onto TESS light curves. The implementation accounts for the conversion between UTC timestamps and BTJD, normalising the flux from the ground-based observations, and handling edge cases like no TESS data for a given target, no images taken of the target, or targets that did not have any observation sessions allocated to them.
 
 == Data Validation <data_validation>
 
-To validate the correctness of the ingestion pipeline, the system was tested against the known exoplanet host star pi Mensae (HD 39091). Pi Mensae hosts a confirmed hot super-Earth (pi Mensae c) discovered by TESS with an orbital period of 6.27 days and a transit depth of approximately 300 ppm @huang2018.
+To validate the correctness of our ingestion pipeline, we employed the known exoplanet hosting star pi Mensae (HD 39091). pi Mensae hosts the confirmed hot super-Earth planet pi Mensae c, which was discovered by the TESS mission with an orbital period of 6.27 days and a depth of approximately 300 ppm @huang2018.
 
 === Ingestion Validation
 
@@ -222,16 +212,18 @@ The subsequent TESS observation search returned multiple sectors of observations
 
 === Light Curve Validation
 
-For the first sector observation, the FITS file was downloaded and parsed. The parser extracted 18,317 data points from the `TIME`, `PDCSAP_FLUX`, `SAP_FLUX`, and `QUALITY` columns. After filtering NaN values, 17,842 valid points remained.
+For the first of the two sector observations, the file was downloaded and parsed. The parser revealed 18,317 data points within the TIME, PDCSAP_FLUX, SAP_FLUX, and QUALITY columns. After filtering the data points that contained NaN values, there remained 17,842 data points.
 
 #figure(
   rect(width: 100%, height: 200pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Screenshot placeholder --- Light curve of pi Mensae from TESS Sector 1 showing normalised PDCSAP flux with transit dips visible at ~6.27-day intervals._]
+    #align(
+      center + horizon,
+    )[_Screenshot placeholder --- Light curve of pi Mensae from TESS Sector 1 showing normalised PDCSAP flux with transit dips visible at ~6.27-day intervals._]
   ],
   caption: [TESS Sector 1 light curve for pi Mensae displayed in the Nyx frontend.],
 ) <pi_mensae_light_curve>
 
-The light curve displayed in @pi_mensae_light_curve shows periodic dips consistent with the published orbital period of pi Mensae c. The transit depth of approximately 300 ppm is visible in the PDCSAP flux data after the SPOC pipeline's systematic error correction @stumpe2012.
+The light curve displayed in @pi_mensae_light_curve indicates the presence of dips in the light that are in accordance with the published orbital period of the planet pi Mensae c. The depth of the dips, at approximately 300 ppm, is visible in the PDCSAP flux values following the correction for systematics introduced by the SPOC pipeline @stumpe2012.
 
 === Known Value Comparison
 
@@ -253,7 +245,7 @@ The light curve displayed in @pi_mensae_light_curve shows periodic dips consiste
   caption: [Comparison of published and Nyx-derived parameters for pi Mensae c.],
 ) <pi_mensae_comparison>
 
-The coordinates match exactly as they are resolved directly from MAST's name resolution service. The orbital period and transit depth are consistent with published values from @huang2018, confirming that the FITS parsing pipeline correctly extracts and stores the time-series data without introducing artefacts.
+All of these coordinates match exactly what is reported from MAST. The period and depth parameters also match those published from @huang2018, indicating that the FITS files are correctly parsed.
 
 == Test Execution
 
@@ -266,7 +258,9 @@ cmake --build build --target nyx-tests
 
 #figure(
   rect(width: 100%, height: 120pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Terminal output placeholder --- GoogleTest output showing `[==========] 136 tests from 10 test suites ran. [  PASSED  ] 136 tests.`_]
+    #align(
+      center + horizon,
+    )[_Terminal output placeholder --- GoogleTest output showing `[==========] 136 tests from 10 test suites ran. [  PASSED  ] 136 tests.`_]
   ],
   caption: [GoogleTest output showing all 136 tests passing.],
 ) <test_output>
@@ -275,9 +269,10 @@ cmake --build build --target nyx-tests
 
 The test suite has several limitations:
 
-- *No automated integration tests*: Database queries and HTTP routing are not tested automatically. Repository implementations are validated only through manual testing against PostgreSQL.
-- *No load testing*: Performance under concurrent users has not been benchmarked. The 200ms response time target (NFR1) is verified informally during development.
-- *Infrastructure mocked at unit level*: The MAST HTTP client, FITS parser, and SMTP sender are mocked in unit tests. Bugs in request construction, response parsing, or FITS column reading would only surface during manual or integration testing.
-- *Frontend untested*: The Next.js frontend has no automated test suite. UI behaviour is validated manually.
+- There are no automated integration tests for the API; database queries and routing are not tested automatically. Repository implementations are only tested manually on PostgreSQL.
+- There is no load testing of the API to ensure it can handle the required number of concurrent users (NFR1). The response time of 200ms has been informally tested during development.
+- The infrastructure components (HTTP client, FITS parser, SMTP sender) are mocked in unit tests. Bugs in these components would not be detected by unit tests but only during manual testing.
 
-Despite these limitations, the unit test suite provides confidence that the business logic is correct for all supported flows, including edge cases such as token reuse detection, duplicate observation handling, and ownership enforcement.
+The frontend has not been tested with an automated test suite; the buttons and forms have been manually tested.
+
+Despite these limitations, the unit tests ensure that the business logic of the API is implemented correctly for all supported flows and edge cases.
