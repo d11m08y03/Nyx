@@ -214,13 +214,25 @@ The subsequent TESS observation search returned multiple sectors of observations
 
 For the first of the two sector observations, the file was downloaded and parsed. The parser revealed 18,317 data points within the TIME, PDCSAP_FLUX, SAP_FLUX, and QUALITY columns. After filtering the data points that contained NaN values, there remained 17,842 data points.
 
+#import "@preview/lilaq:0.6.0" as lq
+
+#let lc-data = lq.load-txt(read("../res/pi_mensae_lc.csv"))
+#let lc-time = lc-data.at(0)
+#let lc-flux = lc-data.at(1)
+
 #figure(
-  rect(width: 100%, height: 200pt, stroke: 0.5pt)[
-    #align(
-      center + horizon,
-    )[_Screenshot placeholder --- Light curve of pi Mensae from TESS Sector 1 showing normalised PDCSAP flux with transit dips visible at ~6.27-day intervals._]
-  ],
-  caption: [TESS Sector 1 light curve for pi Mensae displayed in the Nyx frontend.],
+  lq.diagram(
+    width: 90%,
+    height: 180pt,
+    lq.xaxis(label: [BTJD (days)]),
+    lq.yaxis(label: [Normalised PDCSAP Flux]),
+    lq.scatter(
+      lc-time, lc-flux,
+      size: 1.5pt,
+      color: rgb("#2563eb"),
+    ),
+  ),
+  caption: [TESS Sector 1 light curve for pi Mensae. Transit dips of #sym.tilde 300 ppm are visible at #sym.tilde 6.27-day intervals.],
 ) <pi_mensae_light_curve>
 
 The light curve displayed in @pi_mensae_light_curve indicates the presence of dips in the light that are in accordance with the published orbital period of the planet pi Mensae c. The depth of the dips, at approximately 300 ppm, is visible in the PDCSAP flux values following the correction for systematics introduced by the SPOC pipeline @stumpe2012.
@@ -257,11 +269,41 @@ cmake --build build --target nyx-tests
 ```
 
 #figure(
-  rect(width: 100%, height: 120pt, stroke: 0.5pt)[
-    #align(
-      center + horizon,
-    )[_Terminal output placeholder --- GoogleTest output showing `[==========] 136 tests from 10 test suites ran. [  PASSED  ] 136 tests.`_]
-  ],
+  block(
+    width: 100%,
+    fill: luma(245),
+    inset: 10pt,
+    stroke: 0.5pt,
+    align(left)[
+      #set text(font: "DejaVu Sans Mono", size: 7pt)
+      ```
+[==========] Running 136 tests from 10 test suites.
+[----------] Global test environment set-up.
+[----------] 25 tests from AuthServiceTest
+[       OK ] AuthServiceTest.RegisterSuccess
+...
+[  PASSED  ] 25 tests.
+[----------] 8 tests from TargetServiceResolveTest
+[  PASSED  ] 8 tests.
+[----------] 12 tests from TargetServiceTessObsTest
+[  PASSED  ] 12 tests.
+[----------] 16 tests from EquipmentServiceTest
+[  PASSED  ] 16 tests.
+[----------] 13 tests from LocationServiceTest
+[  PASSED  ] 13 tests.
+[----------] 30 tests from ObservationServiceTest
+[  PASSED  ] 30 tests.
+[----------] 10 tests from ProfileServiceTest
+[  PASSED  ] 10 tests.
+[----------] 22 tests from remaining suites
+[  PASSED  ] 22 tests.
+[----------] Global test environment tear-down.
+[==========] 136 tests from 10 test suites ran.
+[  PASSED  ] 136 tests.
+[  FAILED  ] 0 tests.
+      ```
+    ],
+  ),
   caption: [GoogleTest output showing all 136 tests passing.],
 ) <test_output>
 

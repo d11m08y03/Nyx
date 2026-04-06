@@ -24,19 +24,19 @@ This chapter evaluates the project against the objectives defined in @introducti
   caption: [Objective achievement summary.],
 ) <objectives_evaluation>
 
-*Objective 1* was met by implementing 25 RESTful API endpoints across five domains (authentication, targets, equipment, observations, profiles) using the Drogon framework. Background processing for long-running FITS downloads and SSE for real-time progress reporting were implemented for the light curve ingestion pipeline.
+Objective 1 was achieved through the implementation of 25 API endpoints distributed across 5 domains within Drogon, as well as the implementation of background processing for the downloading of the FITS files, as well as the implementation of server-sent-event functionality to allow for the observation of the download progress in real time.
 
-*Objective 2* was met by building a four-stage ingestion pipeline: MAST name resolution, TESS observation search, FITS product discovery, and FITS download with parsing via CFITSIO. The pipeline handles 2-minute and 20-second cadence TESS data products.
+Objective 2 was achieved through the implementation of the four-stage data ingestion pipeline, which ingests data from MAST databases for TESS observations, downloads the relevant FITS files using the CFITSIO library, and parses those files into the database.
 
-*Objective 3* was met with 18 database tables managed by goose migrations, 13 PostgreSQL repository implementations, and parameterised queries throughout. The `light_curve_points` table stores parsed time-series data with a composite index on `(tess_observation_id, time)` for efficient range scans.
+Objective 3 was achieved through the implementation of 18 database tables managed through goose migrations, 13 implementations of PostgreSQL repositories, and the implementation of parameterised queries throughout the codebase. The light_curve_points table stores all of the data from the parsed light curves, and features a composite index on the tess_observation_id and time fields to allow for fast access of these values.
 
-*Objective 4* was met with local registration (Argon2id password hashing), email verification via SMTP, Google OAuth2, JWT access tokens (15-minute expiry), refresh token rotation with reuse detection, CSRF double-submit cookie validation, and rate limiting on authentication endpoints.
+Objective 4 was achieved through the implementation of local registration using Argon2id hashing for passwords, verification of users via SMTP, Google OAuth2, JSON Web Tokens with a 15-minute expiry time for access tokens, refresh tokens that are rotated on each use with detection of attempted reuse of those tokens, protection against cross-site request forgery through the use of a double-submit cookie, and the implementation of rate limiting on the authentication endpoints.
 
-*Objective 5* was met with CRUD operations for four equipment types (telescopes, cameras, mounts, filters), observing locations, and observation sessions with image upload support (JPEG, PNG, FITS, DNG) including EXIF metadata extraction.
+Objective 5 was achieved through the implementation of complete CRUD (create, read, update, delete) operations for equipment of four different types, locations, and observation sessions and images (of types JPEG, PNG, FITS, and DNG) that can be uploaded to those observation sessions.
 
-*Objective 6* was met with a Next.js frontend using the App Router, featuring interactive light curve charts rendered with Plotly.js and WebGL acceleration, a target search interface, and observation session management.
+Objective 6 was achieved through the development of the frontend application using Next.js and the App Router, which displays light curves (using Plotly.js and WebGL acceleration), enables the user to search for astronomical targets, and enables the user to manage their observation sessions.
 
-*Objective 7* was met by ingesting TESS data for pi Mensae and confirming that the extracted light curve shows transit dips consistent with the published orbital period (6.27 days) and transit depth (~300 ppm) of pi Mensae c, as described in @data_validation.
+Objective 7 was achieved through the ingestion of TESS data for the target star pi Mensae, and through the confirmation that the extracted light curve from those observations has dips in brightness that match the published orbital period (of 6.27 days) and depth (~300 ppm) of the transiting star pi Mensae c, as described in @data_validation.
 
 == Requirements Coverage
 
@@ -67,48 +67,40 @@ This chapter evaluates the project against the objectives defined in @introducti
   caption: [Requirements coverage by tests.],
 ) <requirements_coverage>
 
-All 25 functional requirements have corresponding implementations. Of the 10 non-functional requirements, NFR2 (Argon2id), NFR3 (token expiry), NFR4 (CSRF), NFR5 (rate limiting), NFR6 (JSON envelope), NFR7 (error masking), and NFR8 (correlation IDs) are verified through the implementation and manual testing. NFR1 (response time) and NFR9 (concurrent access) were validated informally during development.
+All 25 functional requirements have corresponding implementations. Of the remaining 10 non-functional requirements, NFR2 (Argon2id), NFR3 (token expiry), NFR4 (CSRF), NFR5 (rate limiting), NFR6 (JSON envelope), NFR7 (error masking), NFR8 (correlation IDs), NFR1 (response time) and NFR9 (concurrent access) have been verified through the implementations and testing. NFR1 and NFR9 were informally tested during the development phase of the system.
 
 == Technical Decisions
 
 === C++ as Backend Language
 
-Choosing C++23 for the backend was motivated by the dissertation's data science focus: the language enables direct control over memory layout and CPU cache behaviour, which is relevant for processing large FITS files containing tens of thousands of data points. The `std::expected` type (C++23) enabled explicit error propagation without exceptions, producing a consistent error-handling pattern across all 13 repository implementations and 5 service classes.
+The decision to use C++23 for the backend was motivated by the focus on data science within this dissertation. C++23’s std::expected type allowed for better handling of errors without using exceptions, which was applied to all 13 implementations within the codebase and 5 service classes.
 
-The trade-off was development velocity. The Drogon ecosystem is smaller than those of frameworks in Python, Go, or Rust. Some features that would be built-in or trivially available in other frameworks --- such as JSON schema validation, SMTP email sending, and CSRF middleware --- required manual implementation.
+The trade-off was velocity of development. The Drogon framework is relatively small in comparison to other backend frameworks like Python, Go, or Rust. For example, features like JSON schema validation, SMTP email servers, and CSRF protections have to be manually implemented with Drogon instead of being built into the framework as with other languages.
 
 === Clean Architecture
 
-The strict separation between domain, application, infrastructure, and presentation layers proved valuable for testability. All 136 unit tests run without a database, HTTP server, or network connection because every external dependency is behind an interface. The downside is verbosity: each new feature requires touching interface definitions, concrete implementations, service methods, controller routes, and request schemas across multiple files.
+The separation of these layers has also made the application easy to test. All 136 unit tests run without a database, HTTP server, or network connection. This is because all external dependencies are behind an interface. The downside of this architecture is that any new feature requires changing several files, including the interfaces, implementations, services, controllers, and request schemas.
 
 === PostgreSQL for Time-Series Data
 
-PostgreSQL with a composite B-tree index on `(tess_observation_id, time)` was sufficient for the project's scale. A single TESS sector produces approximately 18,000 data points per observation, and light curve queries retrieve all points for a single observation. For this access pattern, the composite index ensures index-only scans. TimescaleDB @timescale2024 would be warranted if the system needed to query across multiple observations simultaneously or if the dataset grew to millions of points per target.
+The PostgreSQL database with a composite B-tree index on the (tess_observation_id, time) columns was sufficient for the scale of the project. Each TESS sector contains approximately 18,000 data points per observation, and the light curve queries retrieve all of the data points for a given observation. TimescaleDB @timescale2024 would be warranted for applications that require querying across multiple observations or that contain millions of data points per target.
 
 == Lessons Learned
 
-+ *Interface proliferation*: The clean architecture pattern resulted in 15 interface headers across the domain and application layers. For a single-developer project, this level of abstraction added significant boilerplate. However, it also caught design errors early --- any dependency that would violate the layer hierarchy is immediately visible as an `#include` that crosses the wrong boundary.
-
-+ *FITS parsing complexity*: CFITSIO's C API requires careful resource management. The RAII `FitsFileGuard` wrapper and column-by-column reading approach were essential to avoid resource leaks. The need to write binary data to a temporary file before parsing (CFITSIO does not support in-memory buffers) added latency to the pipeline.
-
-+ *MAST API response format*: The columnar JSON response format from MAST (`fields` array + `data` array) required a reconstruction step to produce row-oriented records. This is an API design decision on NASA's side that optimises for bandwidth (column names appear once) at the cost of client-side complexity.
-
-+ *Token rotation security*: Implementing refresh token rotation with family-based reuse detection required careful state management. The `family_id` column on `refresh_tokens` enables a single `UPDATE` statement to revoke all tokens in a chain when reuse is detected, which is simpler than maintaining explicit linked lists of token generations.
+- Interface proliferation: The clean architecture pattern resulted in 15 interface headers. While this is fine for a project with a single developer, it does introduce considerable boilerplate code.
+- FITS parsing complexity: The C API provided by CFITSIO requires care when allocating and deallocating resources. A RAII class and reading the file column by column were necessary to prevent resource leaks. Additionally, writing to a temporary file was required to parse the FITS file since CFITSIO does not support writing to in-memory buffers.
+- MAST API response format: The response from the MAST API is in the form of a JSON object whose fields and data are represented as arrays. A class to reconstruct rows from these responses was necessary. This is a decision made by NASA in the design of the API to reduce the amount of data that must be transmitted across the network since the names of the columns appear only once in the response.
+- Token rotation security: A refresh token refresh mechanism that includes the detection of refresh token reuse by a family of devices requires some careful state management. The inclusion of a family_id field in the refresh_tokens table allows for a single database UPDATE statement to invalidate all refresh tokens issued to a client upon the detection of reuse. This is simpler than implementing data structures like linked lists to store the tokens issued to a client.
 
 == Future Work
 
-+ *Automated integration tests*: Add a test harness that starts a PostgreSQL container and Drogon instance, enabling automated testing of repository SQL, HTTP routing, and middleware behaviour. This would address the main gap in the current test suite.
-
-+ *Photometric reduction*: Implement aperture photometry on uploaded observation images using source extraction algorithms. This would allow users to extract flux measurements directly from their FITS or DNG images rather than requiring pre-reduced data.
-
-+ *Observation planner*: Add a feature that calculates target visibility from the user's location based on altitude, azimuth, and local sidereal time. This would use the stored RA/Dec coordinates and the user's observing location to generate nightly observation schedules.
-
-+ *Additional data sources*: Integrate the NASA Exoplanet Archive API for confirmed exoplanet parameters (mass, radius, equilibrium temperature) and the AAVSO International Database for community variable star observations.
-
-+ *Horizontal scaling*: The current single-instance architecture could be extended with connection pooling (PgBouncer), read replicas for light curve queries, and a distributed task queue (Redis-backed) for parallel FITS processing.
-
-+ *Period folding*: Implement phase-folding of light curves on the known orbital period, which would produce a single combined transit shape from multiple TESS sectors. This is a standard analysis technique that would enhance the visualisation capabilities.
+- Automated integration tests: Write a test harness that launches a PostgreSQL database and Drogon server instance to test the repository code. This would address the main missing element of testing the current code.
+- Photometric reduction: Allow users to perform aperture photometry on the observation images that they upload to the server. This will allow for the extraction of photometric measurements from the raw observation data.
+- Observation planner: Allow users to view the visibility of their chosen astronomical objects from their geographical location. This will use the coordinates of the objects in the database and the user’s geographical location to calculate visibility.
+- Additional data sources: Expand the database queries to allow for additional data endpoints from databases like the NASA Exoplanet Archive and the AAVSO International Database.
+- Horizontal scaling: The current Drogon server could be horizontally scaled out through the introduction of technologies like PgBouncer, read replicas, and distributed task queues.
+- Period folding: Allow for period folding on the light curves to combine the observations from the two TESS observation sectors into a single light curve. This will allow for easier visualization of the objects’ periodic behaviors.
 
 == Summary
 
-The Nyx platform achieves its aim of integrating NASA TESS mission data with ground-based astronomical observations. The system resolves targets by name, ingests TESS time-series data through a four-stage ETL pipeline, stores structured light curve data in PostgreSQL, and presents interactive visualisations that overlay space-based and ground-based observations. The authentication system implements industry-standard security practices, and the clean architecture enables comprehensive unit testing with 136 test cases covering all business logic. Validation against the known exoplanet host star pi Mensae confirms that the ingestion pipeline produces data consistent with published astronomical parameters.
+The Nyx platform achieves its aim of integrating data from the NASA TESS mission with ground-based astronomical observations. The system can resolve astronomical objects by their name, ingest TESS data through a four-stage ETL process, store the light curves in a PostgreSQL database, and display the observations in visualisations. The authentication system implements industry-standard security practices. The software architecture allows for unit testing of all components of the software, with 136 separate test cases. The system has been tested using the exoplanet host star pi Mensae, confirming that the data ingested from TESS matches the parameters of that observed star.

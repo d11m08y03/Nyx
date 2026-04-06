@@ -1340,10 +1340,66 @@ Passwords are hashed using Argon2id @biryukov2016, the winner of the 2015 Passwo
 Every inbound HTTP request passes through a pipeline of Drogon filters before reaching the controller. Filters are applied in the order they are listed in the `ADD_METHOD_TO` macro for each route. The four middleware filters form a chain: CorrelationIdFilter, then RateLimitFilter (on auth routes), then JwtAuthFilter (on protected routes), then CsrfFilter (on state-changing protected routes). @middleware_chain illustrates this.
 
 #figure(
-  rect(width: 100%, height: 140pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Middleware filter chain diagram. HTTP Request #sym.arrow CorrelationIdFilter (generates UUID, creates scoped logger, attaches to request attributes) #sym.arrow RateLimitFilter (sliding window 10 req\/min\/IP, rejects with 429) #sym.arrow JwtAuthFilter (extracts Bearer token, verifies JWT, injects user\_id) #sym.arrow CsrfFilter (compares cookie vs header, constant-time) #sym.arrow Controller._]
-  ],
-  caption: [HTTP middleware filter chain.],
+  diagram(
+    spacing: (4mm, 12mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 6pt,
+    node-shape: rect,
+
+    // === Request ===
+    node((0, 0), align(center)[HTTP Request],
+      name: <httpreq>, fill: luma(240)),
+
+    // === Filters ===
+    node((0, 1), align(center)[*CorrelationIdFilter*\ #text(size: 7pt)[Generate UUID, create\ scoped logger, attach\ to request attributes]],
+      name: <corr>, fill: rgb("#dbeafe"), width: 140pt),
+
+    node((0, 2), align(center)[*RateLimitFilter*\ #text(size: 7pt)[Sliding window\ 10 req/min/IP]],
+      name: <rate>, fill: rgb("#ede9fe"), width: 140pt),
+
+    node((0, 3), align(center)[*JwtAuthFilter*\ #text(size: 7pt)[Extract Bearer token,\ verify JWT, inject `user_id`]],
+      name: <jwt>, fill: rgb("#dcfce7"), width: 140pt),
+
+    node((0, 4), align(center)[*CsrfFilter*\ #text(size: 7pt)[Compare cookie vs header,\ constant-time comparison]],
+      name: <csrf>, fill: rgb("#fef9c3"),
+      stroke: 0.5pt + rgb("#ca8a04"), width: 140pt),
+
+    // === Controller ===
+    node((0, 5), align(center)[Controller],
+      name: <ctrl>, fill: luma(240)),
+
+    // === Reject nodes ===
+    node((1, 2), align(center)[429],
+      name: <r429>, fill: rgb("#fee2e2")),
+    node((1, 3), align(center)[401],
+      name: <r401>, fill: rgb("#fee2e2")),
+    node((1, 4), align(center)[403],
+      name: <r403>, fill: rgb("#fee2e2")),
+
+    // === Scope labels ===
+    node((-1, 1), align(right)[#text(size: 7pt)[all routes]],
+      name: <l1>, stroke: none, fill: none),
+    node((-1, 2), align(right)[#text(size: 7pt)[auth routes]],
+      name: <l2>, stroke: none, fill: none),
+    node((-1, 3), align(right)[#text(size: 7pt)[protected routes]],
+      name: <l3>, stroke: none, fill: none),
+    node((-1, 4), align(right)[#text(size: 7pt)[state-changing]],
+      name: <l4>, stroke: none, fill: none),
+
+    // === Flow ===
+    edge(<httpreq>, <corr>, "->"),
+    edge(<corr>, <rate>, "->"),
+    edge(<rate>, <jwt>, "->"),
+    edge(<jwt>, <csrf>, "->"),
+    edge(<csrf>, <ctrl>, "->"),
+
+    // === Reject edges ===
+    edge(<rate>, <r429>, "->"),
+    edge(<jwt>, <r401>, "->"),
+    edge(<csrf>, <r403>, "->"),
+  ),
+  caption: [HTTP middleware filter chain. Each filter can short-circuit the request with an error response.],
 ) <middleware_chain>
 
 === CorrelationIdFilter
