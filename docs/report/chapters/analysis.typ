@@ -1,3 +1,6 @@
+#import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
+#import fletcher.shapes: ellipse
+
 = Requirements Analysis <analysis>
 
 In this chapter, we define the requirements for the Nyx platform. The requirements are derived from the problem statement defined in @introduction and the gaps in the literature reviewed in @lit_review. Furthermore, a stakeholder analysis is performed to determine which individuals will utilise the platform and what their needs are of the platform. The functional requirements are defined within seven subsystems of the Nyx platform. Beyond the functional requirements for the platform, there are also non-functional requirements for the platform. Additionally, the data requirements for the Nyx platform are defined. Use cases for the Nyx platform are also defined. Finally, the requirements are also provided with a MoSCoW analysis and traceability matrices.
@@ -261,9 +264,55 @@ The following section describes each of the use cases for the Nyx platform in de
 @use_case_diagram illustrates the primary use cases for the two actor types: unauthenticated visitors and authenticated users.
 
 #figure(
-  rect(width: 100%, height: 200pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Use case diagram placeholder --- to be replaced with rendered diagram._]
-  ],
+  diagram(
+    spacing: (18mm, 12mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.5pt,
+    node-inset: 12pt,
+
+    // Actors (left side)
+    node((0, 0.5), align(center)[Unauthenticated\ Visitor], shape: rect, name: <uv>),
+    node((0, 3), align(center)[Authenticated\ User], shape: rect, name: <au>),
+
+    // External actors (right side)
+    node((3, 0), align(center)[Email\ System], shape: rect, name: <email>),
+    node((3, 1), align(center)[Google OAuth\ Provider], shape: rect, name: <google>),
+
+    // Use cases — unauthenticated (single column, top)
+    node((1.5, 0), align(center)[UC1: Register and\ Verify Email], shape: ellipse, name: <uc1>),
+    node((1.5, 1), align(center)[UC7: Google\ OAuth Login], shape: ellipse, name: <uc7>),
+
+    // Use cases — authenticated (2-column grid)
+    node((1, 2), align(center)[UC2: Search and\ Resolve Target], shape: ellipse, name: <uc2>),
+    node((2, 2), align(center)[UC3: Fetch\ Light Curve], shape: ellipse, name: <uc3>),
+    node((1, 3), align(center)[UC4: Record\ Observation], shape: ellipse, name: <uc4>),
+    node((2, 3), align(center)[UC5: Run Aperture\ Photometry], shape: ellipse, name: <uc5>),
+    node((1.5, 4), align(center)[UC6: Compare\ Observations], shape: ellipse, name: <uc6>),
+
+    // System boundary
+    node(
+      enclose: (<uc1>, <uc2>, <uc3>, <uc4>, <uc5>, <uc6>, <uc7>),
+      stroke: 0.5pt + black,
+      inset: 14pt,
+      snap: -1,
+      name: <sys>,
+    ),
+
+    // Unauthenticated visitor edges
+    edge(<uv>, <uc1>, "-"),
+    edge(<uv>, <uc7>, "-"),
+
+    // Authenticated user edges
+    edge(<au>, <uc2>, "-"),
+    edge(<au>, <uc3>, "-"),
+    edge(<au>, <uc4>, "-"),
+    edge(<au>, <uc5>, "-"),
+    edge(<au>, <uc6>, "-"),
+
+    // External system edges
+    edge(<email>, <uc1>, "-"),
+    edge(<google>, <uc7>, "-"),
+  ),
   caption: [Use case diagram showing interactions for unauthenticated and authenticated users.],
 ) <use_case_diagram>
 

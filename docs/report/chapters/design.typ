@@ -1,3 +1,5 @@
+#import "@preview/fletcher:0.5.8" as fletcher: diagram, node, edge
+
 = System Design <design>
 
 This chapter presents the complete system design of Nyx. Nyx’s backend system architecture is described in this chapter, as are the database schema and indexing strategy, the REST API, the TESS data ingestion system, the system for parsing FITS files, the system for processing and performing photometry on ground-based images, the time system converters, the authentication and authorisation system, the HTTP middleware system, the frontend system architecture, and the trade-offs that were made in the design of each of these systems.
@@ -9,9 +11,38 @@ The backend follows an architecture established by Martin @martin2017, consistin
 @architecture_diagram illustrates the four layers and their dependency directions.
 
 #figure(
-  rect(width: 100%, height: 220pt, stroke: 0.5pt)[
-    #align(center + horizon)[_Architecture diagram --- concentric layers: Domain (innermost) #sym.arrow Application #sym.arrow Infrastructure #sym.arrow Presentation (outermost). Arrows show dependency direction inward._]
-  ],
+  diagram(
+    spacing: (16mm, 10mm),
+    node-stroke: 0.5pt,
+    edge-stroke: 0.6pt,
+    node-inset: 10pt,
+
+    // Domain layer (innermost, top)
+    node((1, 0), align(center)[*Domain Layer*\ Entities, Repository Interfaces],
+      shape: rect, name: <domain>, width: 180pt,
+      fill: luma(245)),
+
+    // Application layer
+    node((1, 1), align(center)[*Application Layer*\ Services, DTOs, Port Interfaces],
+      shape: rect, name: <app>, width: 220pt,
+      fill: luma(230)),
+
+    // Infrastructure layer
+    node((1, 2), align(center)[*Infrastructure Layer*\ Repositories, API Clients,\ Security, Email, Config],
+      shape: rect, name: <infra>, width: 260pt,
+      fill: luma(215)),
+
+    // Presentation layer (outermost, bottom)
+    node((1, 3), align(center)[*Presentation Layer*\ Controllers, Middleware, Schemas],
+      shape: rect, name: <pres>, width: 300pt,
+      fill: luma(200)),
+
+    // Dependency arrows (pointing inward = upward)
+    edge(<app>, <domain>, "->", label: [depends on], label-side: right),
+    edge(<infra>, <domain>, "->", bend: 30deg),
+    edge(<infra>, <app>, "->", label: [implements], label-side: right),
+    edge(<pres>, <app>, "->", label: [calls], label-side: right),
+  ),
   caption: [Clean architecture layers of the Nyx backend. Dependencies point strictly inward.],
 ) <architecture_diagram>
 
