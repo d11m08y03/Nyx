@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <unistd.h>
 #include <fitsio.h>
 #include <spdlog/spdlog.h>
 

@@ -90,7 +90,7 @@ namespace Nyx::Application::Target::Tests {
       MOCK_METHOD(std::string, generate, (), (override));
   };
 
-  class MockLightCurvePointRepository
+  class MockLCPRepository
     : public Nyx::Domain::ILightCurvePointRepository {
     public:
       MOCK_METHOD(
@@ -105,10 +105,12 @@ namespace Nyx::Application::Target::Tests {
         (const std::string& observation_id, bool quality_filter),
         (override)
       );
-      MOCK_METHOD(
-        Nyx::Core::Result<int>, count_by_observation_id,
-        (const std::string& observation_id), (override)
-      );
+      int mock_count = 0;
+      auto count_by_observation_id(
+        const std::string& /*observation_id*/
+      ) -> Nyx::Core::Result<int> override {
+        return mock_count;
+      }
       MOCK_METHOD(
         Nyx::Core::Result<std::string>,
         find_by_observation_id_as_json,
@@ -140,7 +142,7 @@ namespace Nyx::Application::Target::Tests {
           std::make_shared<MockTessObservationRepository>();
         this->uuid_gen = std::make_shared<MockUuidGenerator>();
         this->lcp_repo =
-          std::make_shared<MockLightCurvePointRepository>();
+          std::make_shared<MockLCPRepository>();
         this->fits_parser = std::make_shared<MockFitsParser>();
         this->logger = spdlog::default_logger();
 
@@ -155,7 +157,7 @@ namespace Nyx::Application::Target::Tests {
       std::shared_ptr<MockTargetRepository> target_repo;
       std::shared_ptr<MockTessObservationRepository> tess_obs_repo;
       std::shared_ptr<MockUuidGenerator> uuid_gen;
-      std::shared_ptr<MockLightCurvePointRepository> lcp_repo;
+      std::shared_ptr<MockLCPRepository> lcp_repo;
       std::shared_ptr<MockFitsParser> fits_parser;
       std::shared_ptr<spdlog::logger> logger;
       std::unique_ptr<TargetService> service;
@@ -847,8 +849,7 @@ namespace Nyx::Application::Target::Tests {
       .WillOnce(::testing::Return(
         std::optional<Nyx::Domain::TessObservation>(observation)
       ));
-    EXPECT_CALL(*this->lcp_repo, count_by_observation_id("to-1"))
-      .WillOnce(::testing::Return(0));
+    this->lcp_repo->mock_count = 0;
     EXPECT_CALL(
       *this->mast_client,
       download_fits("mast:TESS/product/lc.fits")
@@ -917,8 +918,7 @@ namespace Nyx::Application::Target::Tests {
       .WillOnce(::testing::Return(
         std::optional<Nyx::Domain::TessObservation>(observation)
       ));
-    EXPECT_CALL(*this->lcp_repo, count_by_observation_id("to-1"))
-      .WillOnce(::testing::Return(2));
+    this->lcp_repo->mock_count = 2;
     EXPECT_CALL(
       *this->lcp_repo, find_by_observation_id("to-1", false)
     ).WillOnce(::testing::Return(stored_points));
@@ -945,8 +945,7 @@ namespace Nyx::Application::Target::Tests {
       .WillOnce(::testing::Return(
         std::optional<Nyx::Domain::TessObservation>(observation)
       ));
-    EXPECT_CALL(*this->lcp_repo, count_by_observation_id("to-1"))
-      .WillOnce(::testing::Return(0));
+    this->lcp_repo->mock_count = 0;
     EXPECT_CALL(
       *this->mast_client,
       download_fits("mast:TESS/product/lc.fits")

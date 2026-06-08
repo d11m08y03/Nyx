@@ -1,0 +1,26 @@
+info:
+  name: Tmp
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{SERVER_URL}}/api/v1/user"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Valls",
+        "surname": "Jole",
+        "email": "valls@gmail.com",
+        "address": "H",
+        "alerting": false,
+        "energyAlertingThreshold": 0
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
