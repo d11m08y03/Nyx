@@ -281,6 +281,7 @@ namespace Nyx::Presentation::Http::Auth {
       return;
     }
 
+
     auto result = this->auth_service->refresh_access_token(
       refresh_token, logger
     );

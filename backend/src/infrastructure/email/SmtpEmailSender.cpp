@@ -85,8 +85,7 @@ namespace Nyx::Infrastructure::Email {
     }
 
     auto smtp_url = std::string{
-      (this->config->smtp_use_tls() ? "smtps://" : "smtp://")
-      + this->config->smtp_host() + ":"
+      "smtp://" + this->config->smtp_host() + ":"
       + std::to_string(this->config->smtp_port())
     };
 

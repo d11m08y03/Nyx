@@ -6,8 +6,18 @@
 #include <spdlog/spdlog.h>
 
 namespace Nyx::Infrastructure::Nasa {
+  static auto extract_api_path(const std::string& url) -> std::string {
+    if (url.starts_with("http://") || url.starts_with("https://")) {
+      auto scheme_end = url.find("://");
+      auto path_start = url.find('/', scheme_end + 3);
+      if (path_start == std::string::npos) return "/";
+      return url.substr(path_start);
+    }
+    return url;
+  }
+
   MastClient::MastClient(std::string base_url)
-    : base_url(std::move(base_url)) {
+    : base_url(extract_api_path(base_url)) {
     spdlog::debug("MastClient initialized with base_url={}", this->base_url);
   }
 

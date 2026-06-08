@@ -312,7 +312,8 @@ namespace Nyx::Infrastructure::Persistence {
             )
           : "",
         image.photometry_status.value_or(""),
-        image.photometry_error_message.value_or("")
+        image.photometry_error_message.value_or(""),
+        image.id
       );
 
       if (result.empty()) {

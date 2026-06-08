@@ -40,7 +40,13 @@ namespace Nyx::Infrastructure::Imaging {
 
       auto date_time = find_key("Exif.Photo.DateTimeOriginal");
       if (date_time != exif_data.end()) {
-        result.captured_at = date_time->toString();
+        auto ts = date_time->toString();
+        if (ts.size() >= 10 && ts[4] == ':'
+            && ts[7] == ':') {
+          ts[4] = '-';
+          ts[7] = '-';
+        }
+        result.captured_at = ts;
       }
 
       auto camera = find_key("Exif.Image.Model");

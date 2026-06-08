@@ -167,6 +167,28 @@ namespace Nyx::Application::Observation {
     if (lower.ends_with(".dng")) {
       return "image/x-adobe-dng";
     }
+    if (lower.ends_with(".nef")) {
+      return "image/x-nikon-nef";
+    }
+    if (lower.ends_with(".cr2")
+        || lower.ends_with(".cr3")) {
+      return "image/x-canon-cr2";
+    }
+    if (lower.ends_with(".arw")) {
+      return "image/x-sony-arw";
+    }
+    if (lower.ends_with(".raf")) {
+      return "image/x-fuji-raf";
+    }
+    if (lower.ends_with(".orf")) {
+      return "image/x-olympus-orf";
+    }
+    if (lower.ends_with(".rw2")) {
+      return "image/x-panasonic-rw2";
+    }
+    if (lower.ends_with(".pef")) {
+      return "image/x-pentax-pef";
+    }
     return "application/octet-stream";
   }
 
@@ -428,6 +450,10 @@ namespace Nyx::Application::Observation {
     auto allowed_types = std::vector<std::string>{
       "image/jpeg", "image/png", "image/tiff",
       "image/x-adobe-dng",
+      "image/x-nikon-nef", "image/x-canon-cr2",
+      "image/x-sony-arw", "image/x-fuji-raf",
+      "image/x-olympus-orf", "image/x-panasonic-rw2",
+      "image/x-pentax-pef",
     };
     auto type_allowed = std::find(
       allowed_types.begin(), allowed_types.end(),
@@ -793,13 +819,16 @@ namespace Nyx::Application::Observation {
       }
     }
 
-    auto plate_scale =
-      (camera.pixel_size_um
-       / static_cast<double>(telescope.focal_length_mm))
-      * 206.265;
-    auto aperture_radius = std::max(
-      5.0, 2.0 / plate_scale
-    );
+    constexpr auto fallback_aperture_radius = 8.0;
+    auto aperture_radius = fallback_aperture_radius;
+    if (camera.pixel_size_um > 0.0
+        && telescope.focal_length_mm > 0) {
+      auto plate_scale =
+        (camera.pixel_size_um
+         / static_cast<double>(telescope.focal_length_mm))
+        * 206.265;
+      aperture_radius = std::max(5.0, 2.0 / plate_scale);
+    }
     auto annulus_inner = 2.0 * aperture_radius;
     auto annulus_outer = 3.0 * aperture_radius;
 

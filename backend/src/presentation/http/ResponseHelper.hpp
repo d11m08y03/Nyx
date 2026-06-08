@@ -103,7 +103,7 @@ namespace Nyx::Presentation::Http {
         auto cookie = drogon::Cookie("refresh_token", refresh_token);
         cookie.setHttpOnly(true);
         cookie.setSecure(secure);
-        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setSameSite(drogon::Cookie::SameSite::kLax);
         cookie.setPath("/api/v1/auth");
         cookie.setMaxAge(max_age_seconds);
         response->addCookie(cookie);
@@ -116,7 +116,7 @@ namespace Nyx::Presentation::Http {
         auto cookie = drogon::Cookie("refresh_token", "");
         cookie.setHttpOnly(true);
         cookie.setSecure(secure);
-        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setSameSite(drogon::Cookie::SameSite::kLax);
         cookie.setPath("/api/v1/auth");
         cookie.setMaxAge(0);
         response->addCookie(cookie);
@@ -130,7 +130,7 @@ namespace Nyx::Presentation::Http {
         auto cookie = drogon::Cookie("csrf_token", csrf_token);
         cookie.setHttpOnly(false);
         cookie.setSecure(secure);
-        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setSameSite(drogon::Cookie::SameSite::kLax);
         cookie.setPath("/");
         cookie.setMaxAge(604800);
         response->addCookie(cookie);
@@ -143,7 +143,7 @@ namespace Nyx::Presentation::Http {
         auto cookie = drogon::Cookie("csrf_token", "");
         cookie.setHttpOnly(false);
         cookie.setSecure(secure);
-        cookie.setSameSite(drogon::Cookie::SameSite::kStrict);
+        cookie.setSameSite(drogon::Cookie::SameSite::kLax);
         cookie.setPath("/");
         cookie.setMaxAge(0);
         response->addCookie(cookie);
